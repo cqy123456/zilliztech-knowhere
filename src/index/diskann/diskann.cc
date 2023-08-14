@@ -25,6 +25,8 @@
 #else
 #include "diskann/windows_aligned_file_reader.h"
 #endif
+#include <thread>
+
 #include "knowhere/factory.h"
 #include "knowhere/feder/DiskANN.h"
 #include "knowhere/file_manager.h"
@@ -541,6 +543,7 @@ DiskANNIndexNode<T>::Search(const DataSet& dataset, const Config& cfg, const Bit
     bool all_searches_are_good = true;
     std::vector<folly::Future<folly::Unit>> futures;
     futures.reserve(nq);
+    LOG_KNOWHERE_INFO_ << "current thread id: " << std::this_thread::get_id() << " begin commit task" << std::endl;
     for (int64_t row = 0; row < nq; ++row) {
         futures.emplace_back(pool_->push([&, index = row]() {
             pq_flash_index_->cached_beam_search(xq + (index * dim), k, lsearch, p_id + (index * k),
@@ -553,6 +556,8 @@ DiskANNIndexNode<T>::Search(const DataSet& dataset, const Config& cfg, const Bit
             all_searches_are_good = false;
         }
     }
+
+    LOG_KNOWHERE_INFO_ << "current thread id: " << std::this_thread::get_id() << " search task done." << std::endl;
 
     if (!all_searches_are_good) {
         return Status::diskann_inner_error;
