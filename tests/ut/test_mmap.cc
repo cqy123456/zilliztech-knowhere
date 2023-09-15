@@ -100,12 +100,11 @@ TEST_CASE("Search mmap", "[float metrics]") {
         auto rows = dataset.GetRows();
         auto dim = dataset.GetDim();
         auto p_data = dataset.GetTensor();
-        knowhere::BinarySet bs;
-        REQUIRE(index.Serialize(bs) == knowhere::Status::success);
-        auto data = bs.GetByName(index.Type());
+        knowhere::IndexSequence is;
+        REQUIRE(index.Serialize(is) == knowhere::Status::success);
+        auto data = is.GetSeq();
 
-        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data->data.get()), data->size);
-        REQUIRE(index.DeserializeFromFile(path, conf) == knowhere::Status::success);
+        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data), is.GetSize());
     };
 
     const auto train_ds = GenDataSet(nb, dim);
@@ -252,11 +251,11 @@ TEST_CASE("Search binary mmap", "[float metrics]") {
         auto rows = dataset.GetRows();
         auto dim = dataset.GetDim();
         auto p_data = dataset.GetTensor();
-        knowhere::BinarySet bs;
-        REQUIRE(index.Serialize(bs) == knowhere::Status::success);
-        auto data = bs.GetByName(index.Type());
+        knowhere::IndexSequence is;
+        REQUIRE(index.Serialize(is) == knowhere::Status::success);
+        auto data = is.GetSeq();
 
-        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data->data.get()), data->size);
+        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data), is.GetSize());
         REQUIRE(index.DeserializeFromFile(path, conf) == knowhere::Status::success);
     };
 
@@ -358,11 +357,11 @@ TEST_CASE("Search binary mmap", "[bool metrics]") {
         auto rows = dataset.GetRows();
         auto dim = dataset.GetDim();
         auto p_data = dataset.GetTensor();
-        knowhere::BinarySet bs;
-        REQUIRE(index.Serialize(bs) == knowhere::Status::success);
-        auto data = bs.GetByName(index.Type());
+        knowhere::IndexSequence is;
+        REQUIRE(index.Serialize(is) == knowhere::Status::success);
+        auto data = is.GetSeq();
 
-        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data->data.get()), data->size);
+        WriteDataToDisk(path.string(), reinterpret_cast<const char*>(data), is.GetSize());
         REQUIRE(index.DeserializeFromFile(path, conf) == knowhere::Status::success);
     };
 

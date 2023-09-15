@@ -73,15 +73,13 @@ CopyAndNormalizeVecs(const float* x, size_t rows, int32_t dim) {
 }
 
 void
-ConvertIVFFlatIfNeeded(const BinarySet& binset, const uint8_t* raw_data, const size_t raw_size) {
-    std::vector<std::string> names = {"IVF",  // compatible with knowhere-1.x
-                                      knowhere::IndexEnum::INDEX_FAISS_IVFFLAT};
-    auto binary = binset.GetByNames(names);
-    if (binary == nullptr) {
+ConvertIVFFlatIfNeeded(IndexSequence& indexseq, const uint8_t* raw_data, const size_t raw_size) {
+    if (indexseq.Empty()) {
+        LOG_KNOWHERE_DEBUG_ << "input index_sequence is empty.";
         return;
     }
 
-    MemoryIOReader reader(binary->data.get(), binary->size);
+    MemoryIOReader reader(indexseq.GetSeq(), indexseq.GetSize());
 
     try {
         uint32_t h;
@@ -92,7 +90,7 @@ ConvertIVFFlatIfNeeded(const BinarySet& binset, const uint8_t* raw_data, const s
         faiss::read_ivf_header(ivfl.get(), &reader);
         ivfl->code_size = ivfl->d * sizeof(float);
 
-        auto remains = binary->size - reader.tellg() - sizeof(uint32_t) - sizeof(ivfl->invlists->nlist) -
+        auto remains = indexseq.GetSize() - reader.tellg() - sizeof(uint32_t) - sizeof(ivfl->invlists->nlist) -
                        sizeof(ivfl->invlists->code_size);
         auto invlist_size = sizeof(uint32_t) + sizeof(size_t) + ivfl->nlist * sizeof(size_t);
         auto ids_size = ivfl->ntotal * sizeof(faiss::Index::idx_t);
@@ -106,9 +104,8 @@ ConvertIVFFlatIfNeeded(const BinarySet& binset, const uint8_t* raw_data, const s
             // over-write IVF_FLAT_NM binary with native IVF_FLAT binary
             MemoryIOWriter writer;
             faiss::write_index(ivfl.get(), &writer);
-            std::shared_ptr<uint8_t[]> data(writer.data());
-            binary->data = data;
-            binary->size = writer.tellg();
+            std::unique_ptr<uint8_t[]> data(writer.data());
+            indexseq = IndexSequence(std::move(data), writer.tellg());
 
             LOG_KNOWHERE_INFO_ << "Convert IVF_FLAT_NM to native IVF_FLAT, rows " << ivfl->ntotal << ", dim "
                                << ivfl->d;

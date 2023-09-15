@@ -19,7 +19,6 @@
 #include <vector>
 
 #include "common/range_util.h"
-#include "knowhere/binaryset.h"
 #include "knowhere/dataset.h"
 
 constexpr int64_t kSeed = 42;
