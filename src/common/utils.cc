@@ -73,15 +73,13 @@ CopyAndNormalizeVecs(const float* x, size_t rows, int32_t dim) {
 }
 
 void
-ConvertIVFFlatIfNeeded(const BinarySet& binset, const uint8_t* raw_data, const size_t raw_size) {
-    std::vector<std::string> names = {"IVF",  // compatible with knowhere-1.x
-                                      knowhere::IndexEnum::INDEX_FAISS_IVFFLAT};
-    auto binary = binset.GetByNames(names);
-    if (binary == nullptr) {
+ConvertIVFFlatIfNeeded(IndexSequence& indexseq, const uint8_t* raw_data, const size_t raw_size) {
+    if (indexseq.Empty()) {
+        LOG_KNOWHERE_DEBUG_ << "input index_sequence is empty.";
         return;
     }
 
-    MemoryIOReader reader(binary->data.get(), binary->size);
+    MemoryIOReader reader(indexseq.GetSeq(), indexseq.GetSize());
 
     // there are 2 possibilities for the input index binary:
     //  1. native IVF_FLAT, do nothing
@@ -100,9 +98,8 @@ ConvertIVFFlatIfNeeded(const BinarySet& binset, const uint8_t* raw_data, const s
         // over-write IVF_FLAT_NM binary with native IVF_FLAT binary
         MemoryIOWriter writer;
         faiss::write_index(index, &writer);
-        std::shared_ptr<uint8_t[]> data(writer.data());
-        binary->data = data;
-        binary->size = writer.tellg();
+        std::unique_ptr<uint8_t[]> data(writer.data());
+        indexseq = IndexSequence(std::move(data), writer.tellg());
 
         LOG_KNOWHERE_INFO_ << "Convert IVF_FLAT_NM to native IVF_FLAT";
     }
