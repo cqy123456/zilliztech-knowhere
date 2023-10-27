@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 #include "knowhere/config.h"
+#include  <set>
 namespace knowhere {
-
+constexpr const CFG_INT::value_type kInterDegreeDefaultValue = 128;
+constexpr const CFG_INT::value_type kGraphDegreeDefaultValue = 64;
 class CagraConfig : public BaseConfig {
  public:
     CFG_INT intermediate_graph_degree;
@@ -40,13 +42,13 @@ class CagraConfig : public BaseConfig {
             .set_range(1, 1024)
             .for_search();
         KNOWHERE_CONFIG_DECLARE_FIELD(intermediate_graph_degree)
-            .set_default(128)
             .description("degree of input graph for pruning.")
+            .allow_empty_without_default()
             .for_train()
             .set_range(1, 65536);
         KNOWHERE_CONFIG_DECLARE_FIELD(graph_degree)
-            .set_default(64)
             .description("degree of output graph.")
+            .allow_empty_without_default()
             .for_train()
             .set_range(1, 65536);
         KNOWHERE_CONFIG_DECLARE_FIELD(itopk_size)
@@ -94,6 +96,49 @@ class CagraConfig : public BaseConfig {
             .set_default(0.5)
             .set_range(0.1, 0.9)
             .for_search();
+    }
+    inline Status
+    CheckAndAdjustForBuild() override {
+        if (metric_type.value() != "L2") {
+            LOG_KNOWHERE_ERROR_ << "cagra only support L2";
+            return Status::invalid_metric_type;
+        }
+        if (!intermediate_graph_degree.has_value() && !graph_degree.has_value()) {
+            intermediate_graph_degree = kInterDegreeDefaultValue;
+            graph_degree = kGraphDegreeDefaultValue;
+        } else if (!graph_degree.has_value()) {
+            graph_degree = uint32_t(std::ceil(intermediate_graph_degree.value()/2.0));
+        } else if (!intermediate_graph_degree.has_value()) {
+            intermediate_graph_degree = graph_degree.value() * 2;
+        } else if (graph_degree.value() > intermediate_graph_degree.value()) {
+            LOG_KNOWHERE_ERROR_ << "intermediate_graph_degree should be larger than graph_degree";
+            return Status::out_of_range_in_json;
+        }
+        return Status::success;
+    }
+
+    inline Status
+    CheckAndAdjustForSearch(std::string* err_msg) override {
+        std::set<int32_t> legal_team_size = {0, 4, 8, 16, 32};
+        std::set<int32_t> legal_thread_block_size = {0, 64, 128, 256, 512, 1024};
+        if (metric_type.has_value() && metric_type.value() != "L2") {
+            *err_msg = "cagra only support L2";
+            LOG_KNOWHERE_ERROR_ << *err_msg;
+            return Status::invalid_metric_type;
+        }
+        if (team_size.has_value() && legal_team_size.find(team_size.value()) == legal_team_size.end()) {
+            *err_msg = 
+                "team_size(" + std::to_string(team_size.value()) + ") should be in [0, 4, 8, 16, 32]";
+            LOG_KNOWHERE_ERROR_ << *err_msg;
+            return Status::out_of_range_in_json;
+        }
+        if (thread_block_size.has_value() && legal_thread_block_size.find(thread_block_size.value()) == legal_team_size.end()) {
+            *err_msg = 
+                "thread_block_size(" + std::to_string(thread_block_size.value()) + ") should be in [0, 64, 128, 256, 512, 1024]";
+            LOG_KNOWHERE_ERROR_ << *err_msg;
+            return Status::out_of_range_in_json;
+        }
+        return Status::success;
     }
 };
 

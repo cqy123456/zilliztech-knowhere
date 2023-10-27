@@ -16,6 +16,9 @@
 #include "index/hnsw/hnsw_config.h"
 #include "index/ivf/ivf_config.h"
 #include "knowhere/config.h"
+#ifdef KNOWHERE_WITH_RAFT
+#include "index/cagra/cagra_config.h"
+#endif 
 
 TEST_CASE("Test config json parse", "[config]") {
     knowhere::Status s;
@@ -293,4 +296,67 @@ TEST_CASE("Test config json parse", "[config]") {
         CHECK(s == knowhere::Status::success);
         CHECK(range_cfg.trace_visit.value() == true);
     }
+
+#ifdef KNOWHERE_WITH_RAFT
+     SECTION("test cagra config") {
+        knowhere::CagraConfig cagra_config;
+        std::string msg;
+        knowhere::Json json = knowhere::Json::parse(R"({
+            "metric_type": "L2"
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::TRAIN);
+        CHECK(s == knowhere::Status::success);
+
+        json = knowhere::Json::parse(R"({
+            "metric_type": "IP"
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::TRAIN);
+        s = cagra_config.CheckAndAdjustForBuild();
+        CHECK(s == knowhere::Status::invalid_metric_type);
+
+        json = knowhere::Json::parse(R"({
+            "metric_type": "L2", 
+            "intermediate_graph_degree": 56
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::TRAIN);
+        CHECK(s == knowhere::Status::success);
+        s = cagra_config.CheckAndAdjustForBuild();
+        CHECK(s == knowhere::Status::success);
+
+        json = knowhere::Json::parse(R"({
+            "metric_type": "L2", 
+            "graph_degree": 20
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::TRAIN);
+        CHECK(s == knowhere::Status::success);
+        s = cagra_config.CheckAndAdjustForBuild();
+        CHECK(s == knowhere::Status::success);
+
+        json = knowhere::Json::parse(R"({
+            "metric_type": "L2", 
+            "graph_degree": 20,
+            "intermediate_graph_degree": 10
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::TRAIN);
+        CHECK(s == knowhere::Status::success);
+        s = cagra_config.CheckAndAdjustForBuild();
+        CHECK(s == knowhere::Status::out_of_range_in_json);
+
+        json = knowhere::Json::parse(R"({
+            "team_size" : 0
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::SEARCH);
+        CHECK(s == knowhere::Status::success);
+        s = cagra_config.CheckAndAdjustForSearch(&msg);
+        CHECK(s == knowhere::Status::success);
+
+        json = knowhere::Json::parse(R"({
+            "team_size" : 15
+        })");
+        s = knowhere::Config::Load(cagra_config, json, knowhere::SEARCH);
+        CHECK(s == knowhere::Status::success);
+        s = cagra_config.CheckAndAdjustForSearch(&msg);
+        CHECK(s == knowhere::Status::out_of_range_in_json);
+     }
+#endif 
 }
