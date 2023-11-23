@@ -24,22 +24,22 @@ constexpr uint32_t cuda_concurrent_size = 32;
 namespace knowhere {
 
 KNOWHERE_REGISTER_GLOBAL(GPU_RAFT_IVF_FLAT, [](const int32_t& version, const Object& object) {
-    return Index<IndexNodeThreadPoolWrapper>::Create(
-        std::make_unique<RaftIvfIndexNode<detail::raft_ivf_flat_index>>(version, object), cuda_concurrent_size);
-});
+    return (Index<IndexNodeThreadPoolWrapper>::Create(
+        std::make_unique<RaftIvfIndexNode<knowhere::fp32, detail::raft_ivf_flat_index>>(version, object), cuda_concurrent_size));
+}, fp32);
 
 KNOWHERE_REGISTER_GLOBAL(GPU_RAFT_IVF_PQ, [](const int32_t& version, const Object& object) {
-    return Index<IndexNodeThreadPoolWrapper>::Create(
-        std::make_unique<RaftIvfIndexNode<detail::raft_ivf_pq_index>>(version, object), cuda_concurrent_size);
-});
+    return (Index<IndexNodeThreadPoolWrapper>::Create(
+        std::make_unique<RaftIvfIndexNode<knowhere::fp32, detail::raft_ivf_pq_index>>(version, object), cuda_concurrent_size));
+}, fp32);
 
 KNOWHERE_REGISTER_GLOBAL(GPU_IVF_FLAT, [](const int32_t& version, const Object& object) {
-    return Index<IndexNodeThreadPoolWrapper>::Create(
-        std::make_unique<RaftIvfIndexNode<detail::raft_ivf_flat_index>>(version, object), cuda_concurrent_size);
-});
+    return (Index<IndexNodeThreadPoolWrapper>::Create(
+        std::make_unique<RaftIvfIndexNode<knowhere::fp32, detail::raft_ivf_flat_index>>(version, object), cuda_concurrent_size));
+}, fp32);
 
 KNOWHERE_REGISTER_GLOBAL(GPU_IVF_PQ, [](const int32_t& version, const Object& object) {
-    return Index<IndexNodeThreadPoolWrapper>::Create(
-        std::make_unique<RaftIvfIndexNode<detail::raft_ivf_pq_index>>(version, object), cuda_concurrent_size);
-});
+    return (Index<IndexNodeThreadPoolWrapper>::Create(
+        std::make_unique<RaftIvfIndexNode<knowhere::fp32, detail::raft_ivf_pq_index>>(version, object), cuda_concurrent_size));
+}, fp32);
 }  // namespace knowhere

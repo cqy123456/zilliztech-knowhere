@@ -230,7 +230,7 @@ struct KnowhereConfigType<detail::raft_ivf_pq_index> {
     typedef RaftIvfPqConfig Type;
 };
 
-template <typename T>
+template <typename D, typename T>
 class RaftIvfIndexNode : public IndexNode {
  public:
     RaftIvfIndexNode(const int32_t& /*version*/, const Object& object) : device_id_{-1}, gpu_index_{} {
