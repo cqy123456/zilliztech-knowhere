@@ -307,6 +307,7 @@ namespace diskann {
       std::string sample_bin, _u64 l_search, _u64 beamwidth,
       _u64 num_nodes_to_cache) {
 #endif
+    this->async_generate_cache.store(true);
     T *  samples;
     try {
       auto s = std::chrono::high_resolution_clock::now();
@@ -1577,7 +1578,6 @@ namespace diskann {
   
   template<typename T>
   void PQFlashIndex<T>::init_cache_async_task() {
-    this->async_generate_cache.exchange(true);
     this->search_counter.store(0);
     this->node_visit_counter.clear();
     this->node_visit_counter.resize(this->num_points);
