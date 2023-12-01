@@ -13,6 +13,16 @@ def gen_data():
 
     return wrap
 
+@pytest.fixture()
+def gen_data_with_type():
+    def wrap(xb_rows, xq_rows, dim, type):
+        return (
+            np.random.randn(xb_rows, dim).astype(type),
+            np.random.randn(xq_rows, dim).astype(type),
+        )
+
+    return wrap
+
 
 @pytest.fixture()
 def faiss_ans():
