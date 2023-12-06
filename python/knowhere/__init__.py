@@ -3,13 +3,16 @@ from .swigknowhere import Status
 from .swigknowhere import GetBinarySet, GetNullDataSet, GetNullBitSetView
 # from .swigknowhere import BruteForceSearch, BruteForceRangeSearch
 import numpy as np
+from bfloat16 import bfloat16
 
 
-def CreateIndex(name, version, type):
+def CreateIndex(name, version, type=np.float32):
     if type == np.float32:
         return swigknowhere.IndexWrapFloat(name, version)
     if type == np.float16:
         return swigknowhere.IndexWrapFP16(name, version)
+    if type == bfloat16:
+        return swigknowhere.IndexWrapBF16(name, version)
 
 
 def GetCurrentVersion():
@@ -40,6 +43,9 @@ def ArrayToDataSet(arr):
             # 转float16 to float32
             arr = arr.astype(np.float32)
             return swigknowhere.Array2DataSetFP16(arr)
+        if arr.dtype == bfloat16:
+            arr = arr.astype(np.float32)
+            return swigknowhere.Array2DataSetBF16(arr)
     raise ValueError(
         """
         ArrayToDataSet only support numpy array dtype float32 and int32 and float16.

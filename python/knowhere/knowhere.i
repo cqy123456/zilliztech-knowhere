@@ -318,6 +318,21 @@ Array2DataSetFP16(float* xb, int nb, int dim) {
     return ds;
 };
 
+knowhere::DataSetPtr
+Array2DataSetBF16(float* xb, int nb, int dim) {
+    auto ds = std::make_shared<DataSet>();
+    ds->SetIsOwner(false);
+    ds->SetRows(nb);
+    ds->SetDim(dim);
+    // float to bf16
+    auto bf16_data = std::vector<knowhere::bf16>(nb * dim);
+    for (int i = 0; i < nb * dim; ++i) {
+        bf16_data[i] = knowhere::bf16(xb[i]);
+    }
+    ds->SetTensor(bf16_data.data());
+    return ds;
+};
+
 int32_t
 CurrentVersion() {
     return knowhere::Version::GetCurrentVersion().VersionNumber();
@@ -531,3 +546,4 @@ SetSimdType(const std::string type) {
 %template(AnnIteratorWrapVector) std::vector<AnnIteratorWrap>;
 %template(IndexWrapFloat) IndexWrap<float>;
 %template(IndexWrapFP16) IndexWrap<knowhere::fp16>;
+%template(IndexWrapBF16) IndexWrap<knowhere::bf16>;
