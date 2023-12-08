@@ -113,7 +113,9 @@ struct bf16 {
     void
     from_fp32(const float f) {
         volatile uint32_t fp32Bits = fp32_to_bits(f);
-        volatile uint16_t bf16Bits = (uint16_t)(fp32Bits >> 16);
+        volatile uint16_t bf16Bits = (uint16_t)((fp32Bits >> 16) & 0x8000);
+        bf16Bits |= (uint16_t)((fp32Bits >> 23) & 0x7F);
+        bf16Bits |= (uint16_t)(fp32Bits >> 16);
         this->bits = bf16Bits;
     }
     float
