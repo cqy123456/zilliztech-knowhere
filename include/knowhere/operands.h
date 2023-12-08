@@ -41,10 +41,10 @@ struct fp16 {
     uint16_t bits = 0;
     fp16() = default;
     fp16(float f) {
-        bits = from_fp32(f);
+        from_fp32(f);
     };
-    uint16_t
-    from_fp32(float f) const {
+    void
+    from_fp32(const float f) {
         // const float scale_to_inf = 0x1.0p+112f;
         // const float scale_to_zero = 0x1.0p-110f;
         constexpr uint32_t scale_to_inf_bits = (uint32_t)239 << 23;
@@ -74,7 +74,7 @@ struct fp16 {
         const uint32_t exp_bits = (bits >> 13) & UINT32_C(0x00007C00);
         const uint32_t mantissa_bits = bits & UINT32_C(0x00000FFF);
         const uint32_t nonsign = exp_bits + mantissa_bits;
-        return static_cast<uint16_t>((sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign));
+        this->bits = static_cast<uint16_t>((sign >> 16) | (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign));
     }
 
     float
@@ -108,15 +108,13 @@ struct bf16 {
     uint16_t bits = 0;
     bf16() = default;
     bf16(float f) {
-        bits = from_fp32(f);
+        from_fp32(f);
     };
-    uint16_t
-    from_fp32(float f) const {
-        uint32_t fp32Bits = fp32_to_bits(f);
-        uint16_t bf16Bits = (uint16_t)((fp32Bits >> 16) & 0x8000);
-        bf16Bits |= (uint16_t)((fp32Bits >> 23) & 0x7F);
-        bf16Bits |= (uint16_t)(fp32Bits >> 16);
-        return bf16Bits;
+    void
+    from_fp32(const float f) {
+        volatile uint32_t fp32Bits = fp32_to_bits(f);
+        volatile uint16_t bf16Bits = (uint16_t)(fp32Bits >> 16);
+        this->bits = bf16Bits;
     }
     float
     to_fp32(uint16_t h) const {

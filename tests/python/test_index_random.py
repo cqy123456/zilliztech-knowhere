@@ -164,10 +164,10 @@ def test_bfloat16_index(gen_data_with_type, faiss_ans, recall, error, name, conf
     )
     k_dis, k_ids = knowhere.DataSetToArray(ans)
     f_dis, f_ids = faiss_ans(xb, xq, config["metric_type"], config["k"])
-    # if (name != "IVFSQ"):
-    #     assert recall(f_ids, k_ids) >= 0.99
-    # else:
-    #     assert recall(f_ids, k_ids) >= 0.70
+    if (name != "IVFSQ"):
+        assert recall(f_ids, k_ids) >= 0.99
+    else:
+        assert recall(f_ids, k_ids) >= 0.70
     assert error(f_dis, f_dis) <= 0.01
 
     bitset = knowhere.CreateBitSet(xb.shape[0])

@@ -22,8 +22,8 @@ def gen_data_with_type():
             xq = np.random.randn(xq_rows, dim).astype(type)
             min_value = -10.0 
             max_value = 10.0
-            xb = np.clip(xb, min_value, max_value)
-            xq = np.clip(xq, min_value, max_value)
+            xb = np.clip(xb, min_value, max_value).astype(type)
+            xq = np.clip(xq, min_value, max_value).astype(type)
             return xb,xq
         else:
             return (

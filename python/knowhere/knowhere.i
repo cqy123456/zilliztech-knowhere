@@ -8,7 +8,11 @@
 #pragma SWIG nowarn=341
 #pragma SWIG nowarn=512
 #pragma SWIG nowarn=362
-
+%{
+#include <stdio.h>
+#include <bitset>
+#include <iostream>
+%}
 %include <stdint.i>
 typedef uint64_t size_t;
 #define __restrict
@@ -306,32 +310,37 @@ Array2DataSetF(float* xb, int nb, int dim) {
 knowhere::DataSetPtr
 Array2DataSetFP16(float* xb, int nb, int dim) {
     auto ds = std::make_shared<DataSet>();
-    ds->SetIsOwner(false);
+    ds->SetIsOwner(true);
     ds->SetRows(nb);
     ds->SetDim(dim);
     // float to fp16
-    auto fp16_data = std::vector<knowhere::fp16>(nb * dim);
+    auto fp16_data = new knowhere::fp16[nb * dim];
     for (int i = 0; i < nb * dim; ++i) {
-        fp16_data[i] = knowhere::fp16(xb[i]);
+        volatile const float base = xb[i];
+        fp16_data[i] = knowhere::fp16(base);
     }
-    ds->SetTensor(fp16_data.data());
+    ds->SetTensor(fp16_data);
     return ds;
 };
-
+#pragma GCC push_options
+#pragma GCC optimize("O0")
 knowhere::DataSetPtr
 Array2DataSetBF16(float* xb, int nb, int dim) {
+    using bf16 = knowhere::bf16;
     auto ds = std::make_shared<DataSet>();
-    ds->SetIsOwner(false);
+    ds->SetIsOwner(true);
     ds->SetRows(nb);
-    ds->SetDim(dim);
-    // float to bf16
-    auto bf16_data = std::vector<knowhere::bf16>(nb * dim);
+    ds->SetDim(dim);    
+    bf16* bf16_data = new bf16[nb * dim];
     for (int i = 0; i < nb * dim; ++i) {
-        bf16_data[i] = knowhere::bf16(xb[i]);
+        float base = xb[i];
+        bf16_data[i].from_fp32(base);
     }
-    ds->SetTensor(bf16_data.data());
+
+    ds->SetTensor(bf16_data);
     return ds;
 };
+#pragma GCC pop_options
 
 int32_t
 CurrentVersion() {
