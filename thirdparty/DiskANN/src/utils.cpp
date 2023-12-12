@@ -58,4 +58,39 @@ namespace diskann {
 
     LOG_KNOWHERE_DEBUG_ << "Wrote normalized points to file: " << outFileName;
   }
+
+  template<typename IN, typename OUT>
+  void convert_types_in_file(const std::string& inFileName,
+                                             const std::string& outFileName) {
+    std::ifstream readr(inFileName, std::ios::binary);
+    std::ofstream writr(outFileName, std::ios::binary);
+
+    int npts_s32, ndims_s32;
+    readr.read((char*) &npts_s32, sizeof(_s32));
+    readr.read((char*) &ndims_s32, sizeof(_s32));
+
+    writr.write((char*) &npts_s32, sizeof(_s32));
+    writr.write((char*) &ndims_s32, sizeof(_s32));
+
+    _u64 npts = (_u64) npts_s32, ndims = (_u64) ndims_s32;
+
+    _u64 blk_size = 131072;
+    _u64 nblks = ROUND_UP(npts, blk_size) / blk_size;
+    LOG_KNOWHERE_DEBUG_ << "# blks: " << nblks;
+
+    IN* read_buf = new IN[npts * ndims];
+    OUT* write_buf = new OUT[npts * ndims];
+    for (_u64 i = 0; i < nblks; i++) {
+      _u64 cblk_size = std::min(npts - i * blk_size, blk_size);
+      readr.read((char*) read_buf, npts * ndims * sizeof(IN));
+      convert_types(read_buf, write_buf, cblk_size, ndims);
+      writr.write((char*) write_buf, npts * ndims * sizeof(OUT));
+    }
+
+    delete[] read_buf;
+    delete[]  write_buf;
+  }
+
+  template void convert_types_in_file<knowhere::fp16, knowhere::fp32>(const std::string& , const std::string&);
+  template void convert_types_in_file<knowhere::bf16, knowhere::fp32>(const std::string& , const std::string&);
 }  // namespace diskann
