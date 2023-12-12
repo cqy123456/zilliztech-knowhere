@@ -273,14 +273,23 @@ class GpuIvfIndexNode : public IndexNode {
     std::unique_ptr<faiss::Index> index_;
 };
 
-KNOWHERE_REGISTER_GLOBAL(GPU_FAISS_IVF_FLAT, [](const int32_t& version, const Object& object) {
-    return Index<GpuIvfIndexNode<faiss::IndexIVFFlat>>::Create(version, object);
-});
-KNOWHERE_REGISTER_GLOBAL(GPU_FAISS_IVF_PQ, [](const int32_t& version, const Object& object) {
-    return Index<GpuIvfIndexNode<faiss::IndexIVFPQ>>::Create(version, object);
-});
-KNOWHERE_REGISTER_GLOBAL(GPU_FAISS_IVF_SQ8, [](const int32_t& version, const Object& object) {
-    return Index<GpuIvfIndexNode<faiss::IndexIVFScalarQuantizer>>::Create(version, object);
-});
+KNOWHERE_REGISTER_GLOBAL(
+    GPU_FAISS_IVF_FLAT,
+    [](const int32_t& version, const Object& object) {
+        return (Index<GpuIvfIndexNode<faiss::IndexIVFFlat<opernad::fp32>>>::Create(version, object));
+    },
+    fp32);
+KNOWHERE_REGISTER_GLOBAL(
+    GPU_FAISS_IVF_PQ,
+    [](const int32_t& version, const Object& object) {
+        return (Index<GpuIvfIndexNode<faiss::IndexIVFPQ<knowhere::fp32>>>::Create(version, object));
+    },
+    fp32);
+KNOWHERE_REGISTER_GLOBAL(
+    GPU_FAISS_IVF_SQ8,
+    [](const int32_t& version, const Object& object) {
+        return Index<GpuIvfIndexNode<faiss::IndexIVFScalarQuantizer<knowhere::fp32>>>::Create(version, object);
+    },
+    fp32);
 
 }  // namespace knowhere

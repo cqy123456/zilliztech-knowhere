@@ -25,9 +25,12 @@
 namespace knowhere {
 template struct GpuRaftIndexNode<raft_proto::raft_index_kind::ivf_pq>;
 
-KNOWHERE_REGISTER_GLOBAL(GPU_RAFT_IVF_PQ, [](const int32_t& version, const Object& object) {
-    return Index<IndexNodeThreadPoolWrapper>::Create(std::make_unique<GpuRaftIvfPqIndexNode>(version, object),
-                                                     cuda_concurrent_size);
-});
+KNOWHERE_REGISTER_GLOBAL(
+    GPU_RAFT_IVF_PQ,
+    [](const int32_t& version, const Object& object) {
+        return Index<IndexNodeThreadPoolWrapper>::Create(std::make_unique<GpuRaftIvfPqIndexNode>(version, object),
+                                                         cuda_concurrent_size);
+    },
+    fp32);
 
 }  // namespace knowhere

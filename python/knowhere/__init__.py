@@ -1,12 +1,44 @@
 from . import swigknowhere
 from .swigknowhere import Status
 from .swigknowhere import GetBinarySet, GetNullDataSet, GetNullBitSetView
-from .swigknowhere import BruteForceSearch, BruteForceRangeSearch
+from .swigknowhere import BruteForceSearchFloat, BruteForceRangeSearchFloat
+from .swigknowhere import BruteForceSearchFP16, BruteForceRangeSearchFP16
+from .swigknowhere import BruteForceSearchBF16, BruteForceRangeSearchBF16
+from .swigknowhere import BruteForceSearchBin, BruteForceRangeSearchBin
+
 import numpy as np
+from bfloat16 import bfloat16
 
 
-def CreateIndex(name, version):
-    return swigknowhere.IndexWrap(name, version)
+def CreateIndex(name, version, type=np.float32):
+    if type == np.float32:
+        return swigknowhere.IndexWrapFloat(name, version)
+    if type == np.float16:
+        return swigknowhere.IndexWrapFP16(name, version)
+    if type == bfloat16:
+        return swigknowhere.IndexWrapBF16(name, version)
+    if type == np.uint8:
+        return swigknowhere.IndexWrapBin(name, version)
+
+def BruteForceSearch(type=np.float32, *args):
+    if type == np.float32:
+        return BruteForceSearchFloat(*args)
+    if type == np.float16:
+        return BruteForceSearchFP16(*args)
+    if type == bfloat16:
+        return BruteForceSearchBF16(*args)
+    if type == np.uint8:
+        return BruteForceSearchBin(*args)
+
+def BruteForceRangeSearch(type=np.float32, *args):
+    if type == np.float32:
+        return BruteForceRangeSearchFloat(*args)
+    if type == np.float16:
+        return BruteForceRangeSearchFP16(*args)
+    if type == bfloat16:
+        return BruteForceRangeSearchBF16(*args)
+    if type == np.uint8:
+        return BruteForceRangeSearchBin(*args)
 
 
 def GetCurrentVersion():
@@ -33,9 +65,15 @@ def ArrayToDataSet(arr):
             return swigknowhere.Array2DataSetI(arr)
         if arr.dtype == np.float32:
             return swigknowhere.Array2DataSetF(arr)
+        if arr.dtype == np.float16:
+            arr = arr.astype(np.float32)
+            return swigknowhere.Array2DataSetFP16(arr)
+        if arr.dtype == bfloat16:
+            arr = arr.astype(np.float32)
+            return swigknowhere.Array2DataSetBF16(arr)
     raise ValueError(
         """
-        ArrayToDataSet only support numpy array dtype float32 and int32.
+        ArrayToDataSet only support numpy array dtype float32,int32,float16 and bfloat16.
         """
     )
 
