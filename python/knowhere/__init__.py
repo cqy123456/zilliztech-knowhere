@@ -127,6 +127,21 @@ def GetVectorDataSetToArray(ans):
     swigknowhere.DataSetTensor2Array(ans, data)
     return data
 
+def GetFloat16VectorDataSetToArray(ans):
+    dim = swigknowhere.DataSet_Dim(ans)
+    rows = swigknowhere.DataSet_Rows(ans)
+    data = np.zeros([rows, dim]).astype(np.float32)
+    swigknowhere.Float16DataSetTensor2Array(ans, data)
+    data = data.astype(np.float16)
+    return data
+
+def GetBFloat16VectorDataSetToArray(ans):
+    dim = swigknowhere.DataSet_Dim(ans)
+    rows = swigknowhere.DataSet_Rows(ans)
+    data = np.zeros([rows, dim]).astype(np.float32)
+    swigknowhere.BFloat16DataSetTensor2Array(ans, data)
+    data = data.astype(bfloat16)
+    return data
 
 def GetBinaryVectorDataSetToArray(ans):
     dim = int(swigknowhere.DataSet_Dim(ans) / 32)

@@ -88,7 +88,7 @@ IndexNodeDataMockWrapper<DataType>::GetVectorByIds(const DataSet& dataset) const
     auto res = index_node_->GetVectorByIds(dataset);
     if constexpr (!std::is_same_v<DataType, typename MockData<DataType>::type>) {
         if (res.has_value()) {
-            auto res_v = data_type_conversion<DataType, typename MockData<DataType>::type>(*res.value());
+            auto res_v = data_type_conversion<typename MockData<DataType>::type, DataType>(*res.value());
             return res_v;
         } else {
             return res;

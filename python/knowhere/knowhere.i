@@ -411,6 +411,28 @@ DataSetTensor2Array(knowhere::DataSetPtr result, float* data, int rows, int dim)
     }
 }
 
+void 
+Float16DataSetTensor2Array(knowhere::DataSetPtr result, float* data, int rows, int dim) {
+    GILReleaser rel;
+    auto data_ = result->GetTensor();
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < dim; ++j) {
+            *(data + i * dim + j) = (float)*((knowhere::fp16*)(data_) + i * dim + j);
+        }
+    }
+}
+
+void 
+BFloat16DataSetTensor2Array(knowhere::DataSetPtr result, float* data, int rows, int dim) {
+    GILReleaser rel;
+    auto data_ = result->GetTensor();
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < dim; ++j) {
+            *(data + i * dim + j) = (float)*((knowhere::bf16*)(data_) + i * dim + j);
+        }
+    }
+}
+
 void
 BinaryDataSetTensor2Array(knowhere::DataSetPtr result, int32_t* data, int rows, int dim) {
     GILReleaser rel;
