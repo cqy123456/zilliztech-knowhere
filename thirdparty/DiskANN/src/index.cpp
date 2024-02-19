@@ -80,7 +80,7 @@ namespace diskann {
     auto   aligned_dim = ROUND_UP(dim, 8);
     size_t allocSize = aligned_dim * sizeof(T);
     alloc_aligned(((void **) &aligned_query), allocSize, 8 * sizeof(T));
-    memset(aligned_query, 0, aligned_dim * sizeof(T));
+    memset((void *) aligned_query, 0, aligned_dim * sizeof(T));
 
     auto l_to_use = diskann_max(search_l, indexing_l);
 
@@ -267,7 +267,7 @@ namespace diskann {
     alloc_aligned(((void **) &_data),
                   (_max_points + _num_frozen_pts) * _aligned_dim * sizeof(T),
                   8 * sizeof(T));
-    std::memset(_data, 0,
+    std::memset((void *) _data, 0,
                 (_max_points + _num_frozen_pts) * _aligned_dim * sizeof(T));
 
     _ep = (unsigned) _max_points;
@@ -286,7 +286,7 @@ namespace diskann {
     this->_func = get_distance_function<T>(m);
     if (ip_prepared) {
         _padding_id = _dim - 1;
-        this->_distance = [this](const T* x, const T* y, size_t n) -> T {
+        this->_distance = [this](const T* x, const T* y, size_t n) -> float {
             auto ret = _func(x, y, n);
             return ret + 2*x[_padding_id]*y[_padding_id];
         };
@@ -364,7 +364,7 @@ namespace diskann {
       return 0;
     }
     size_t tag_bytes_written;
-    auto tag_data = std::make_unique<TagT[]>(_nd + _num_frozen_pts);
+    auto   tag_data = std::make_unique<TagT[]>(_nd + _num_frozen_pts);
     for (_u32 i = 0; i < _nd; i++) {
       if (_location_to_tag.find(i) != _location_to_tag.end()) {
         tag_data[i] = _location_to_tag[i];
@@ -593,7 +593,7 @@ namespace diskann {
     size_t tags_file_num_pts = 0, graph_num_pts = 0, data_file_num_pts = 0;
 
     if (!_save_as_one_file) {
-// For DLVS Store, we will not support saving the index in multiple files.
+      // For DLVS Store, we will not support saving the index in multiple files.
       std::string data_file = std::string(filename) + ".data";
       std::string tags_file = std::string(filename) + ".tags";
       std::string delete_set_file = std::string(filename) + ".del";
@@ -654,7 +654,6 @@ namespace diskann {
 
     _change_lock.unlock();
   }
-
 
   template<typename T, typename TagT>
   size_t Index<T, TagT>::load_graph(std::string filename,
@@ -2052,7 +2051,8 @@ namespace diskann {
       return 0;
 
     if (_nd == 0) {
-      memset(_data + (_max_points) *_aligned_dim, 0, _aligned_dim * sizeof(T));
+      memset((void *) (_data + (_max_points) *_aligned_dim), 0,
+             _aligned_dim * sizeof(T));
       return 1;
     }
     size_t res = calculate_entry_point();
@@ -2421,7 +2421,7 @@ namespace diskann {
 
           memcpy((void *) (_data + _aligned_dim * _nd),
                  _data + (size_t) _aligned_dim * _max_points, sizeof(T) * _dim);
-          memset((_data + (size_t) _aligned_dim * _max_points), 0,
+          memset((void *) (_data + (size_t) _aligned_dim * _max_points), 0,
                  sizeof(T) * _aligned_dim);
         }
       }
@@ -2648,7 +2648,7 @@ namespace diskann {
     memcpy((void *) (_data + (size_t) _aligned_dim * new_location),
            _data + (size_t) _aligned_dim * old_location,
            sizeof(T) * _aligned_dim);
-    memset((_data + (size_t) _aligned_dim * old_location), 0,
+    memset((void *) (_data + (size_t) _aligned_dim * old_location), 0,
            sizeof(T) * _aligned_dim);
   }
 
@@ -3137,15 +3137,23 @@ namespace diskann {
   template class Index<float, int32_t>;
   template class Index<int8_t, int32_t>;
   template class Index<uint8_t, int32_t>;
+  template class Index<knowhere::fp16, int32_t>;
+  template class Index<knowhere::bf16, int32_t>;
   template class Index<float, uint32_t>;
   template class Index<int8_t, uint32_t>;
   template class Index<uint8_t, uint32_t>;
+  template class Index<knowhere::fp16, uint32_t>;
+  template class Index<knowhere::bf16, uint32_t>;
   template class Index<float, int64_t>;
   template class Index<int8_t, int64_t>;
   template class Index<uint8_t, int64_t>;
+  template class Index<knowhere::fp16, int64_t>;
+  template class Index<knowhere::bf16, int64_t>;
   template class Index<float, uint64_t>;
   template class Index<int8_t, uint64_t>;
   template class Index<uint8_t, uint64_t>;
+  template class Index<knowhere::fp16, uint64_t>;
+  template class Index<knowhere::bf16, uint64_t>;
 
   template std::pair<uint32_t, uint32_t>
   Index<float, uint64_t>::search<uint64_t>(const float *query, const size_t K,
@@ -3173,6 +3181,30 @@ namespace diskann {
   Index<int8_t, uint64_t>::search<uint32_t>(const int8_t *query, const size_t K,
                                             const unsigned L, uint32_t *indices,
                                             float *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::fp16, uint64_t>::search<uint64_t>(const knowhere::fp16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint64_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::fp16, uint64_t>::search<uint32_t>(const knowhere::fp16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint32_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::bf16, uint64_t>::search<uint64_t>(const knowhere::bf16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint64_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::bf16, uint64_t>::search<uint32_t>(const knowhere::bf16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint32_t *indices,
+                                                    float    *distances);
   // TagT==uint32_t
   template std::pair<uint32_t, uint32_t>
   Index<float, uint32_t>::search<uint64_t>(const float *query, const size_t K,
@@ -3200,5 +3232,30 @@ namespace diskann {
   Index<int8_t, uint32_t>::search<uint32_t>(const int8_t *query, const size_t K,
                                             const unsigned L, uint32_t *indices,
                                             float *distances);
+
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::fp16, uint32_t>::search<uint64_t>(const knowhere::fp16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint64_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::fp16, uint32_t>::search<uint32_t>(const knowhere::fp16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint32_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::bf16, uint32_t>::search<uint64_t>(const knowhere::bf16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint64_t *indices,
+                                                    float    *distances);
+  template std::pair<uint32_t, uint32_t>
+  Index<knowhere::bf16, uint32_t>::search<uint32_t>(const knowhere::bf16 *query,
+                                                    const size_t          K,
+                                                    const unsigned        L,
+                                                    uint32_t *indices,
+                                                    float    *distances);
 
 }  // namespace diskann

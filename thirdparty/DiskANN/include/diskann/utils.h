@@ -36,6 +36,7 @@ typedef int FileHandle;
 #include "ann_exception.h"
 #include "common_includes.h"
 #include "knowhere/comp/thread_pool.h"
+#include "knowhere/operands.h"
 
 // taken from
 // https://github.com/Microsoft/BLAS-on-flash/blob/master/include/utils.h
@@ -537,7 +538,8 @@ namespace diskann {
 
     for (size_t i = 0; i < npts; i++) {
       reader.read((char*) (data + i * rounded_dim), dim * sizeof(T));
-      memset(data + i * rounded_dim + dim, 0, (rounded_dim - dim) * sizeof(T));
+      memset((void*) (data + i * rounded_dim + dim), 0,
+             (rounded_dim - dim) * sizeof(T));
     }
     stream << " done." << std::endl;
     LOG_KNOWHERE_DEBUG_ << stream.str();
@@ -583,6 +585,12 @@ namespace diskann {
   template<typename T>
   float prepare_base_for_inner_products(const std::string in_file,
                                         const std::string out_file) {
+    if (!knowhere::KnowhereFloatTypeCheck<T>::value) {
+      std::stringstream stream;
+      stream << "DiskANN currently only supports floating point data for IP."
+             << std::endl;
+      throw diskann::ANNException(stream.str(), -1);
+    }
     LOG_KNOWHERE_DEBUG_
         << "Pre-processing base file by adding extra coordinate";
     std::ifstream in_reader(in_file.c_str(), std::ios::binary);
@@ -606,10 +614,10 @@ namespace diskann {
     size_t               block_size = npts <= BLOCK_SIZE ? npts : BLOCK_SIZE;
     std::unique_ptr<T[]> in_block_data =
         std::make_unique<T[]>(block_size * in_dims);
-    std::unique_ptr<float[]> out_block_data =
-        std::make_unique<float[]>(block_size * out_dims);
+    std::unique_ptr<T[]> out_block_data =
+        std::make_unique<T[]>(block_size * out_dims);
 
-    std::memset(out_block_data.get(), 0, sizeof(float) * block_size * out_dims);
+    std::memset((void*) out_block_data.get(), 0, sizeof(T) * block_size * out_dims);
     _u64 num_blocks = DIV_ROUND_UP(npts, block_size);
 
     std::vector<float> norms(npts, 0);
@@ -642,14 +650,14 @@ namespace diskann {
       for (_u64 p = 0; p < block_pts; p++) {
         for (_u64 j = 0; j < in_dims; j++) {
           out_block_data[p * out_dims + j] =
-              in_block_data[p * in_dims + j] / max_norm;
+              (T) (((float) in_block_data[p * in_dims + j]) / max_norm);
         }
         float res = 1 - (norms[start_id + p] / (max_norm * max_norm));
         res = res <= 0 ? 0 : std::sqrt(res);
-        out_block_data[p * out_dims + out_dims - 1] = res;
+        out_block_data[p * out_dims + out_dims - 1] = (T) res;
       }
       out_writer.write((char*) out_block_data.get(),
-                       block_pts * out_dims * sizeof(float));
+                       block_pts * out_dims * sizeof(T));
     }
     out_writer.close();
     return max_norm;
@@ -657,9 +665,15 @@ namespace diskann {
 
   template<typename T>
   std::vector<float> prepare_base_for_cosine(const std::string in_file,
-                                        const std::string out_file) {
-    LOG_KNOWHERE_DEBUG_
-        << "Pre-processing base file by normalizing";
+                                             const std::string out_file) {
+    if (!knowhere::KnowhereFloatTypeCheck<T>::value) {
+      std::stringstream stream;
+      stream
+          << "DiskANN currently only supports floating point data for Cosine."
+          << std::endl;
+      throw diskann::ANNException(stream.str(), -1);
+    }
+    LOG_KNOWHERE_DEBUG_ << "Pre-processing base file by normalizing";
     std::ifstream in_reader(in_file.c_str(), std::ios::binary);
     std::ofstream out_writer(out_file.c_str(), std::ios::binary);
     _u64          npts, in_dims, out_dims;
@@ -680,10 +694,10 @@ namespace diskann {
     size_t               block_size = npts <= BLOCK_SIZE ? npts : BLOCK_SIZE;
     std::unique_ptr<T[]> in_block_data =
         std::make_unique<T[]>(block_size * in_dims);
-    std::unique_ptr<float[]> out_block_data =
-        std::make_unique<float[]>(block_size * out_dims);
+    std::unique_ptr<T[]> out_block_data =
+        std::make_unique<T[]>(block_size * out_dims);
 
-    std::memset(out_block_data.get(), 0, sizeof(float) * block_size * out_dims);
+    std::memset((void*) out_block_data.get(), 0, sizeof(T) * block_size * out_dims);
     _u64 num_blocks = DIV_ROUND_UP(npts, block_size);
 
     std::vector<float> norms(npts, 0);
@@ -716,11 +730,11 @@ namespace diskann {
       for (_u64 p = 0; p < block_pts; p++) {
         for (_u64 j = 0; j < in_dims; j++) {
           out_block_data[p * out_dims + j] =
-              in_block_data[p * in_dims + j] / norms[start_id + p];
+              (T) (((float) in_block_data[p * in_dims + j]) / norms[start_id + p]);
         }
       }
       out_writer.write((char*) out_block_data.get(),
-                       block_pts * out_dims * sizeof(float));
+                       block_pts * out_dims * sizeof(T));
     }
     out_writer.close();
 
@@ -805,7 +819,8 @@ namespace diskann {
 
     for (size_t i = 0; i < npts; i++) {
       reader.read((char*) (data + i * rounded_dim), dim * sizeof(T));
-      memset(data + i * rounded_dim + dim, 0, (rounded_dim - dim) * sizeof(T));
+      memset((void*) (data + i * rounded_dim + dim), 0,
+             (rounded_dim - dim) * sizeof(T));
     }
   }
 

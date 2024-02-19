@@ -63,7 +63,7 @@ namespace diskann {
                                 diskann::Metric                    m)
       : reader(fileReader), metric(m) {
     if (m == diskann::Metric::INNER_PRODUCT || m == diskann::Metric::COSINE) {
-      if (!std::is_floating_point<T>::value) {
+      if (!knowhere::KnowhereFloatTypeCheck<T>::value) {
         LOG(WARNING) << "Cannot normalize integral data types."
                      << " This may result in erroneous results or poor recall."
                      << " Consider using L2 distance with integral data types.";
@@ -134,8 +134,9 @@ namespace diskann {
                              8 * sizeof(float));
       scratch.visited = new tsl::robin_set<_u64>(4096);
 
-      memset(scratch.coord_scratch, 0, sizeof(T) * this->aligned_dim);
-      memset(scratch.aligned_query_T, 0, this->aligned_dim * sizeof(T));
+      memset((void *) scratch.coord_scratch, 0, sizeof(T) * this->aligned_dim);
+      memset((void *) scratch.aligned_query_T, 0,
+             this->aligned_dim * sizeof(T));
       memset(scratch.aligned_query_float, 0, this->aligned_dim * sizeof(float));
 
       ThreadData<T> data;
@@ -196,12 +197,12 @@ namespace diskann {
     auto ctx = this->reader->get_ctx();
 
     nhood_cache_buf = new unsigned[num_cached_nodes * (max_degree + 1)];
-    memset(nhood_cache_buf, 0, num_cached_nodes * (max_degree + 1));
+    memset((void *) nhood_cache_buf, 0, num_cached_nodes * (max_degree + 1));
 
     _u64 coord_cache_buf_len = num_cached_nodes * aligned_dim;
     diskann::alloc_aligned((void **) &coord_cache_buf,
                            coord_cache_buf_len * sizeof(T), 8 * sizeof(T));
-    memset(coord_cache_buf, 0, coord_cache_buf_len * sizeof(T));
+    memset((void *) coord_cache_buf, 0, coord_cache_buf_len * sizeof(T));
 
     size_t BLOCK_SIZE = 32;
     size_t num_blocks = DIV_ROUND_UP(num_cached_nodes, BLOCK_SIZE);
@@ -568,9 +569,8 @@ namespace diskann {
     get_bin_metadata(pq_table_bin, pq_file_num_centroids, pq_file_dim);
 
     this->disk_index_file = disk_index_file;
-
     if (pq_file_num_centroids != 256) {
-      LOG(ERROR) << "Error. Number of PQ centroids is not 256. Exitting.";
+      LOG(ERROR) << "Error. Number of PQ centroids("<<pq_file_num_centroids<<") is not 256. Exitting.";
       return -1;
     }
 
@@ -764,9 +764,9 @@ namespace diskann {
       q_dim--;
     }
     for (uint32_t i = 0; i < q_dim; i++) {
-      data.scratch.aligned_query_float[i] = query1[i];
+      data.scratch.aligned_query_float[i] = (float) query1[i];
       data.scratch.aligned_query_T[i] = query1[i];
-      query_norm += query1[i] * query1[i];
+      query_norm += (float) query1[i] * (float) query1[i];
     }
 
     // if inner product, we also normalize the query and set the last coordinate
@@ -782,8 +782,10 @@ namespace diskann {
         data.scratch.aligned_query_float[this->data_dim - 1] = 0;
       }
       for (uint32_t i = 0; i < q_dim; i++) {
-        data.scratch.aligned_query_T[i] /= query_norm;
-        data.scratch.aligned_query_float[i] /= query_norm;
+        data.scratch.aligned_query_T[i] =
+            (T)((float) data.scratch.aligned_query_T[i] / query_norm);
+        data.scratch.aligned_query_float[i] =
+            (float) data.scratch.aligned_query_float[i] / query_norm;
       }
     }
 
@@ -967,7 +969,7 @@ namespace diskann {
           filter_ratio_in < 0 ? kFilterThreshold : filter_ratio_in;
       bv_cnt = bitset_view.count();
 #ifdef NOT_COMPILE_FOR_SWIG
-      double ratio = ((double)bv_cnt) / bitset_view.size();
+      double ratio = ((double) bv_cnt) / bitset_view.size();
       knowhere::knowhere_diskann_bitset_ratio.Observe(ratio);
 #endif
       if (bitset_view.size() == bv_cnt) {
@@ -1333,7 +1335,6 @@ namespace diskann {
                   return left.distance < right.distance;
                 });
     }
-
     // copy k_search values
     for (_u64 i = 0; i < k_search; i++) {
       if (i >= full_retset.size()) {
@@ -1436,7 +1437,8 @@ namespace diskann {
       const auto original_dim = data_dim - 1;
       memcpy(des + des_idx * original_dim, src, original_dim * sizeof(T));
       for (size_t i = 0; i < original_dim; ++i) {
-        des[des_idx * original_dim + i] *= max_base_norm;
+        des[des_idx * original_dim + i] =
+            (T) (max_base_norm * (float) des[des_idx * original_dim + i]);
       }
     } else {
       memcpy(des + des_idx * data_dim, src, data_dim * sizeof(T));
@@ -1623,5 +1625,7 @@ namespace diskann {
   template class PQFlashIndex<_u8>;
   template class PQFlashIndex<_s8>;
   template class PQFlashIndex<float>;
+  template class PQFlashIndex<knowhere::fp16>;
+  template class PQFlashIndex<knowhere::bf16>;
 
 }  // namespace diskann
