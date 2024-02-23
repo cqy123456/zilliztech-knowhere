@@ -205,6 +205,93 @@ struct QuantizerFP16_avx512<16> : public QuantizerFP16_avx<8> {
 };
 
 /*******************************************************************
+ * 8bit_in_row quantizer
+ *******************************************************************/   
+struct Quantizer8bitInRow_avx512 : public Quantizer8bitInRow_avx {
+    Quantizer8bitInRow_avx512(size_t d, const std::vector<float>& trained)
+            : Quantizer8bitInRow_avx(d, trained) {}
+
+    FAISS_ALWAYS_INLINE float
+    u8_dot_product(const uint8_t* code1, const uint8_t* code2) const {
+        __m512i accu = _mm512_setzero_si512();
+        size_t i = 0;
+        const uint8_t* code1_data = code1 + v_data_offset;
+        const uint8_t* code2_data = code2 + v_data_offset;
+        uint32_t real_len = 0;
+        for (auto i = 0; i < d;  i++) {
+            real_len += int(code1[i+12] * code2[i+12]);
+        }
+        for (; (i + 32) <= d; i += 32) {
+            __m512i c1 = _mm512_cvtepu8_epi16(
+                    _mm256_loadu_si256((__m256i*)(code1_data + i)));
+            __m512i c2 = _mm512_cvtepu8_epi16(
+                    _mm256_loadu_si256((__m256i*)(code2_data + i)));
+            __m512i prod32;
+            prod32 = _mm512_madd_epi16(c1, c2);
+            accu = _mm512_add_epi32(accu, prod32);
+        }
+        float res = (float)_mm512_reduce_add_epi32(accu);
+        if (i < d) {
+            return res + dot_product_in_row(code1_data + i, code2_data + i, d - i);
+        } else {
+            return res;
+        }
+    }
+
+    FAISS_ALWAYS_INLINE void dot_product_batch_4(
+        const uint8_t* __restrict codex,
+        const uint8_t* __restrict codey1,
+        const uint8_t* __restrict codey2,
+        const uint8_t* __restrict codey3,
+        const uint8_t* __restrict codey4,
+        float* result1,
+        float* result2,
+        float* result3,
+        float* result4) const {
+            *result1 = u8_dot_product(codex, codey1);
+            *result2 = u8_dot_product(codex, codey2);
+            *result3 = u8_dot_product(codex, codey3);
+            *result4 = u8_dot_product(codex, codey4);
+    }
+
+    FAISS_ALWAYS_INLINE uint32_t l1_norm(const uint8_t* code) const {
+        const uint8_t* code_data = code + v_data_offset;
+        __m512i accu = _mm512_setzero_si512();
+        __mmask32 mask = 0x55555555; 
+        size_t i = 0;
+        for (; (i + 64) <= d; i += 64) {
+            __m512i c1 = _mm512_cvtepu8_epi16(
+                    _mm256_loadu_si256((__m256i*)(code_data + i)));
+            __m512i c2 = _mm512_cvtepu8_epi16(
+                    _mm256_loadu_si256((__m256i*)(code_data + i + 32)));
+            c1 = _mm512_add_epi16(c1, c2);
+            c2 = _mm512_srli_epi32(c1, 16);
+            auto add = _mm512_maskz_add_epi16(mask, c1, c2);
+            accu = _mm512_add_epi32(add, accu);
+        }
+        float res = (float)_mm512_reduce_add_epi32(accu);
+        
+        if (i < d) {
+            return res + sum_in_row(code_data + i, d - i);
+        } else {
+            return res;
+        }
+    }
+
+    FAISS_ALWAYS_INLINE void l1_norm_batch_4(
+            const uint8_t* __restrict code_0,
+            const uint8_t* __restrict code_1,
+            const uint8_t* __restrict code_2,
+            const uint8_t* __restrict code_3,
+            uint32_t* result) const {
+        result[0] = l1_norm(code_0);
+        result[1] = l1_norm(code_1);
+        result[2] = l1_norm(code_2);
+        result[3] = l1_norm(code_3);
+    }
+};
+
+/*******************************************************************
  * 8bit_direct quantizer
  *******************************************************************/
 
@@ -271,6 +358,8 @@ SQuantizer* select_quantizer_1_avx512(
             return new QuantizerFP16_avx512<SIMDWIDTH>(d, trained);
         case QuantizerType::QT_8bit_direct:
             return new Quantizer8bitDirect_avx512<SIMDWIDTH>(d, trained);
+        case QuantizerType::QT_8bit_in_row:
+            return new Quantizer8bitInRow_avx512(d, trained);
     }
     FAISS_THROW_MSG("unknown qtype");
 }
@@ -513,6 +602,64 @@ struct DCTemplate_avx512<Quantizer, Similarity, 16> : SQDistanceComputer {
     }
 };
 
+template <class Similarity>
+struct DistanceComputerInRow_avx512: SQDistanceComputer {
+    using Sim = Similarity;
+
+    Quantizer8bitInRow_avx512 quant;
+    std::vector<uint8_t> query_code;
+
+    DistanceComputerInRow_avx512(size_t d, const std::vector<float>& trained)
+            : quant(d, trained), query_code(d + Quantizer8bitInRow_avx512::v_meta_length) {}
+    
+    float compute_code_distance(const uint8_t* code1, const uint8_t* code2) const { 
+        if (Sim::metric_type == METRIC_L2) {
+            auto res = quant.l2_norm(code1) + quant.l2_norm(code2); 
+            float dot_product = sq8_in_row_dot_product(quant, code1, code2);
+            return res - 2.0 * dot_product;
+        } else {
+            return sq8_in_row_dot_product(quant, code1, code2);
+        }
+    }
+
+    float query_to_code(const uint8_t* code) const override final {
+        float res = compute_code_distance(query_code.data(), code);
+        return res;
+    }
+
+    void query_to_codes_batch_4(const uint8_t* __restrict code_0,
+        const uint8_t* __restrict code_1,
+        const uint8_t* __restrict code_2,
+        const uint8_t* __restrict code_3,
+        float& dis0,
+        float& dis1,
+        float& dis2,
+        float& dis3) const override final {
+        if (Sim::metric_type == METRIC_INNER_PRODUCT) {
+            sq8_in_row_dot_product_batch_4(quant, query_code.data(), code_0, code_1, code_2, code_3, dis0, dis1, dis2, dis3); 
+            return ;  
+        } else {
+            sq8_in_row_dot_product_batch_4(quant, query_code.data(), code_0, code_1, code_2, code_3, dis0, dis1, dis2, dis3);
+            auto query_l2_norm = quant.l2_norm(query_code.data());
+            dis0 = query_l2_norm + quant.l2_norm(code_0) - 2 * dis0;
+            dis1 = query_l2_norm + quant.l2_norm(code_1) - 2 * dis1;
+            dis2 = query_l2_norm + quant.l2_norm(code_2) - 2 * dis2;
+            dis3 = query_l2_norm + quant.l2_norm(code_3) - 2 * dis3;
+            return ;  
+        }
+    }
+
+    void set_query(const float* x) final {
+        q = x;
+        quant.encode_vector(x, query_code.data());
+    }
+
+    float symmetric_dis(idx_t i, idx_t j) override {
+        return compute_code_distance(
+                codes + i * code_size, codes + j * code_size);
+    }
+};
+
 /*******************************************************************
  * DistanceComputerByte: computes distances in the integer domain
  *******************************************************************/
@@ -664,6 +811,9 @@ SQDistanceComputer* select_distance_computer_avx512(
                         Sim,
                         SIMDWIDTH>(d, trained);
             }
+        case QuantizerType::QT_8bit_in_row:
+                // use SIMDWIDTH = 16 handle all dimension
+                return new DistanceComputerInRow_avx512<Sim>(d, trained);
     }
     FAISS_THROW_MSG("unknown qtype");
     return nullptr;
@@ -744,6 +894,9 @@ InvertedListScanner* sel1_InvertedListScanner_avx512(
                         Similarity,
                         SIMDWIDTH>>(sq, quantizer, store_pairs, sel, r);
             }
+        case QuantizerType::QT_8bit_in_row:
+            return sel2_InvertedListScanner_avx512<DistanceComputerInRow_avx512<
+                Similarity>>(sq, quantizer, store_pairs, sel, r);
     }
 
     FAISS_THROW_MSG("unknown qtype");

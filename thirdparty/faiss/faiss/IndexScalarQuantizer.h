@@ -11,12 +11,16 @@
 #define FAISS_INDEX_SCALAR_QUANTIZER_H
 
 #include <stdint.h>
+#include <cstdio>
 #include <vector>
 
+#include "knowhere/utils.h"
 #include <faiss/IndexFlatCodes.h>
 #include <faiss/IndexIVF.h>
 #include <faiss/impl/ScalarQuantizer.h>
 #include <faiss/impl/ScalarQuantizerOp.h>
+#include <fstream>
+#include <functional>
 
 namespace faiss {
 
@@ -106,6 +110,56 @@ struct IndexIVFScalarQuantizer : IndexIVF {
 
     /* standalone codec interface */
     void sa_decode(idx_t n, const uint8_t* bytes, float* x) const override;
+};
+
+struct IndexIVFScalarQuantizerCC : IndexIVFScalarQuantizer{
+    struct DataBlockIOHandler {
+        public: 
+        DataBlockIOHandler(std::string prefix, size_t block_size);
+        ~DataBlockIOHandler();
+        void ReadDataBlock(char* data, size_t block_id);
+        void AppendDataBlock(const char* data);
+        private:
+        std::shared_mutex file_mtx;
+        size_t buffer_size;
+        size_t buffer_res_size;
+        std::unique_ptr<char []> buffer;
+        std::string raw_data_file_name;
+        size_t block_size;
+        size_t file_block_num;
+        size_t buffer_block_num;
+        size_t buffer_max_block_num;
+    };
+    std::unique_ptr<DataBlockIOHandler> io_handler = nullptr;
+
+    IndexIVFScalarQuantizerCC(
+            Index* quantizer,
+            size_t d,
+            size_t nlist,
+            size_t ssize,
+            ScalarQuantizer::QuantizerType qtype,
+            MetricType metric = METRIC_L2,
+            bool is_cosine = false,
+            bool by_residual = false,
+            std::optional<std::string> raw_data_prefix_path = std::nullopt);
+    
+    IndexIVFScalarQuantizerCC();
+
+    void train(idx_t n, const float* x) override;
+
+    void add_core(idx_t n,
+        const float* x,
+        const float* x_norms,
+        const idx_t* xids,
+        const idx_t* coarse_idx) override;
+
+    void add_with_ids(idx_t n, const float* x, const idx_t* xids) override;
+
+    void reconstruct(idx_t key, float* recons) const override;
+
+    bool with_raw_data();
+
+    void reconstruct_n(idx_t i0, idx_t ni, float* recons) const override;
 };
 
 } // namespace faiss
