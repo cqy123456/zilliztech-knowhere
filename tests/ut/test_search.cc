@@ -60,7 +60,7 @@ TEST_CASE("Test Mem Index With Float Vector", "[float metrics]") {
         return json;
     };
 
-    auto ivfsqcc_gen = [ivfflatcc_gen] () {
+    auto ivfsqcc_gen = [ivfflatcc_gen]() {
         knowhere::Json json = ivfflatcc_gen();
         json[knowhere::indexparam::CODE_SIZE] = 4;
         return json;
@@ -113,7 +113,7 @@ TEST_CASE("Test Mem Index With Float Vector", "[float metrics]") {
         auto [name, gen] = GENERATE_REF(table<std::string, std::function<knowhere::Json()>>({
             // make_tuple(knowhere::IndexEnum::INDEX_FAISS_IDMAP, flat_gen),
             // make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFFLAT, ivfflat_gen),
-            //make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFFLAT_CC, ivfflatcc_gen),
+            // make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFFLAT_CC, ivfflatcc_gen),
             make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFSQ_CC, ivfsqcc_gen),
             // make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFPQ, ivfpq_gen),
             // make_tuple(knowhere::IndexEnum::INDEX_FAISS_SCANN, scann_gen),
