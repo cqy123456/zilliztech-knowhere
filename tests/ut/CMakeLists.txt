@@ -9,7 +9,7 @@
 # is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 # or implied. See the License for the specific language governing permissions and limitations under the License
 
-knowhere_file_glob(GLOB_RECURSE KNOWHERE_UT_SRCS test_search.cc test_ivfflat_cc.cc)
+knowhere_file_glob(GLOB_RECURSE KNOWHERE_UT_SRCS *.cc)
 if(NOT WITH_DISKANN)
   knowhere_file_glob(GLOB_RECURSE KNOWHERE_DISKANN_TESTS test_diskann.cc)
   list(REMOVE_ITEM KNOWHERE_UT_SRCS ${KNOWHERE_DISKANN_TESTS})
@@ -36,4 +36,6 @@ else()
     target_link_libraries(knowhere_tests PRIVATE Catch2::Catch2WithMain knowhere)
 endif()
 
-target_link_libraries(knowhere_tests PRIVATE atomic)
+target_link_libraries(knowhere_tests PRIVATE atomic stdc++fs )
+
+target_compile_options(knowhere_tests PUBLIC "-mf16c;-mavx2")
