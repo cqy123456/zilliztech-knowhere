@@ -369,7 +369,7 @@ get_ivf_sq_quantizer_type(int code_size) {
         case 6:
             return faiss::ScalarQuantizer::QuantizerType::QT_6bit;
         case 8:
-            return faiss::ScalarQuantizer::QuantizerType::QT_8bit_in_row;
+            return faiss::ScalarQuantizer::QuantizerType::QT_8bit;
         case 16:
             return faiss::ScalarQuantizer::QuantizerType::QT_fp16;
         default:
