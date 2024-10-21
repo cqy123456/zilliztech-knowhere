@@ -556,6 +556,40 @@ void IndexIVF::search_preassigned(
                             it.get(), simi, idxi, k, list_size);
 
                     return list_size;
+                // } else if (data_nm){
+                //     size_t scan_cnt = 0;  // only record valid cnt
+                //     std::vector<idx_t> ids;
+                //     std::vector<float> code_norms;
+
+                //     size_t segment_num = invlists->get_segment_num(key);
+                //     for (size_t segment_idx = 0; segment_idx < segment_num; segment_idx++) {
+                //         size_t segment_size = invlists->get_segment_size(key, segment_idx);
+                //         size_t segment_offset = invlists->get_segment_offset(key, segment_idx);
+                //         InvertedLists::ScopedCodes scodes(invlists, key, segment_offset);
+                //         std::unique_ptr<InvertedLists::ScopedIds> sids;
+
+                //         auto scode_norms = std::make_unique<InvertedLists::ScopedCodeNorms>(invlists, key, segment_offset);
+                //         if (scode_norms->get()) {
+                //              code_norms.insert(code_norms.end(), scode_norms->get(), scode_norms->get() + segment_size);
+                //         }
+                //         if (!store_pairs) {
+                //             sids = std::make_unique<InvertedLists::ScopedIds>(
+                //                 invlists, key, segment_offset);
+                //             auto slot_ids = sids->get();
+                //             ids.insert(ids.end(), slot_ids, slot_ids + segment_size);
+                //         }
+                //     }
+                //     const idx_t* data_ptr = ids.data();
+                //     nheap += scanner->scan_codes(
+                //             ids.size(),
+                //             nullptr,
+                //             code_norms.data(),
+                //             data_ptr,
+                //             simi,
+                //             idxi,
+                //             k,
+                //             scan_cnt);
+                //     return scan_cnt;
                 } else {
                     size_t scan_cnt = 0;  // only record valid cnt
 
@@ -811,7 +845,6 @@ void IndexIVF::range_search_preassigned(
     std::string exception_string;
 
     std::vector<RangeSearchPartialResult*> all_pres(omp_get_max_threads());
-
     int pmode = this->parallel_mode & ~PARALLEL_MODE_NO_HEAP_INIT;
     // don't start parallel section if single query
     bool do_parallel = omp_get_max_threads() >= 2 &&

@@ -307,7 +307,7 @@ IndexIVF* parse_IndexIVF(
     int d = quantizer->d;
 
     if (match("Flat")) {
-        return new IndexIVFFlat(get_q(), d, nlist, mt);
+        return new IndexIVFFlat(get_q(), d, nlist, nullptr, mt);
     }
     if (match("FlatDedup")) {
         return new IndexIVFFlatDedup(get_q(), d, nlist, mt);

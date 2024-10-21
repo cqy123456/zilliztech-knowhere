@@ -463,7 +463,9 @@ IvfIndexNode<DataType, IndexType>::TrainInternal(const DataSetPtr dataset, std::
         std::unique_ptr<faiss::IndexFlat> qzr =
             std::make_unique<faiss::IndexFlatElkan>(dim, metric.value(), false, use_elkan);
         // create index. Index does not own qzr
-        index = std::make_unique<faiss::IndexIVFFlat>(qzr.get(), dim, nlist, metric.value(), is_cosine);
+        std::shared_ptr<uint8_t[]> new_data(new uint8_t[dim * rows *sizeof(float)]);
+        std::memcpy(new_data.get(), data, dim * rows *sizeof(float));
+        index = std::make_unique<faiss::IndexIVFFlat>(qzr.get(), dim, nlist, new_data, metric.value(), is_cosine);
         // train
         index->train(rows, (const float*)data);
         // replace quantizer with a regular IndexFlat

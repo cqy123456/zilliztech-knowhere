@@ -336,6 +336,55 @@ struct InvertedLists {
     };
 };
 
+struct NMInvertedLists : InvertedLists {
+    //std::vector<std::vector<uint8_t>> codes; // binary codes, size nlist
+    std::vector<std::vector<idx_t>> ids;     ///< Inverted lists for indexes
+    std::shared_ptr<uint8_t[]> data; 
+    bool with_norm = false;
+    std::vector<std::vector<float>> code_norms; // code norms
+
+    NMInvertedLists(size_t nlist, size_t code_size, std::shared_ptr<uint8_t[]> raw_data, bool with_norm = false);
+    size_t list_size(size_t list_no) const override;
+    const uint8_t* get_codes(size_t list_no) const override;
+    const uint8_t* get_codes(size_t list_no, size_t offset) const override;
+    const idx_t* get_ids(size_t list_no) const override;
+    const uint8_t* get_single_code(size_t list_no, size_t offset) const override;
+
+    void restore_codes(const uint8_t* raw_data,
+                       const size_t raw_size,
+                       const bool is_cosine);
+
+    const float* get_code_norms(size_t list_no, size_t offset) const override;
+    void release_code_norms(size_t list_no, const float* codes) const override;
+
+    size_t add_entries(
+            size_t list_no,
+            size_t n_entry,
+            const idx_t* ids,
+            const uint8_t* code,
+            const float* code_norm = nullptr) override;
+
+    void update_entries(
+            size_t list_no,
+            size_t offset,
+            size_t n_entry,
+            const idx_t* ids,
+            const uint8_t* code) override;
+
+    void resize(size_t list_no, size_t new_size) override;
+
+    InvertedLists* to_readonly() override;
+
+    /// permute the inverted lists, map maps new_id to old_id
+    void permute_invlists(const idx_t* map);
+
+    bool is_empty(size_t list_no, void* inverted_list_context = nullptr)
+            const override;
+
+    ~NMInvertedLists() override;
+};
+
+
 /// simple (default) implementation as an array of inverted lists
 struct ArrayInvertedLists : InvertedLists {
     std::vector<std::vector<uint8_t>> codes; // binary codes, size nlist

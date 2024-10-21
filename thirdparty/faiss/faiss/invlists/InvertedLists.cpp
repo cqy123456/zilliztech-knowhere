@@ -356,6 +356,118 @@ InvertedListsIterator* InvertedLists::get_iterator(
     return new CodeArrayIterator(this, list_no);
 }
 
+/*****************************************************************
+ * NMInvertedLists implementation
+ *****************************************************************/
+NMInvertedLists::NMInvertedLists(
+        size_t nlist,
+        size_t code_size,
+        std::shared_ptr<uint8_t[]> raw_data,
+        bool _with_norm)
+        : with_norm(_with_norm), InvertedLists(nlist, code_size) {
+    ids.resize(nlist);
+    if (with_norm) {
+        code_norms.resize(nlist);
+    }
+    data = raw_data;
+}
+
+size_t NMInvertedLists::add_entries(
+        size_t list_no,
+        size_t n_entry,
+        const idx_t* ids_in,
+        const uint8_t* code,
+        const float* code_norms_in) {
+    if (n_entry == 0)
+        return 0;
+    assert(list_no < nlist);
+    size_t o = ids[list_no].size();
+    ids[list_no].resize(o + n_entry);
+    memcpy(&ids[list_no][o], ids_in, sizeof(ids_in[0]) * n_entry);
+    if (with_norm) {
+        code_norms[list_no].resize(o + n_entry);
+        memcpy(&code_norms[list_no][o], code_norms_in, sizeof(float) * n_entry);
+    }
+    return o;
+}
+
+size_t NMInvertedLists::list_size(size_t list_no) const {
+    assert(list_no < nlist);
+    return ids[list_no].size();
+}
+
+bool NMInvertedLists::is_empty(size_t list_no, void* inverted_list_context)
+        const {
+    FAISS_THROW_IF_NOT(inverted_list_context == nullptr);
+    return ids[list_no].size() == 0;
+}
+
+const uint8_t* NMInvertedLists::get_codes(size_t list_no) const {
+    return data.get(); 
+}
+
+const uint8_t* NMInvertedLists::get_codes(size_t list_no, size_t offset) const {
+    auto id = ids[list_no][offset];
+    return data.get();
+}
+
+const idx_t* NMInvertedLists::get_ids(size_t list_no) const {
+    assert(list_no < nlist);
+    return ids[list_no].data();
+}
+
+const uint8_t* NMInvertedLists::get_single_code(size_t list_no, size_t offset) const {
+    return data.get();
+}
+
+void NMInvertedLists::resize(size_t list_no, size_t new_size) {
+    ids[list_no].resize(new_size);
+}
+
+// temp code for IVF_FLAT_NM backward compatibility
+void NMInvertedLists::restore_codes(
+        const uint8_t* raw_data,
+        const size_t raw_size,
+        const bool is_cosine) {
+    FAISS_THROW_MSG("not implemented");
+}
+
+const float* NMInvertedLists::get_code_norms(
+        size_t list_no,
+        size_t offset) const {
+    if (with_norm) {
+        assert(list_no < nlist);
+        return code_norms[list_no].data();
+    } else {
+        return nullptr;
+    }
+}
+
+void NMInvertedLists::release_code_norms(
+        size_t list_no,
+        const float* codes) const {
+    InvertedLists::release_code_norms(list_no, codes);
+}
+
+void NMInvertedLists::update_entries(
+        size_t list_no,
+        size_t offset,
+        size_t n_entry,
+        const idx_t* ids_in,
+        const uint8_t* codes_in) {
+    FAISS_THROW_MSG("not implemented");
+}
+
+InvertedLists* NMInvertedLists::to_readonly() {
+    FAISS_THROW_MSG("not implemented");
+}
+
+void NMInvertedLists::permute_invlists(const idx_t* map) {
+    // todo aguzhva: permute norms as well?
+    FAISS_THROW_MSG("not implemented");
+}
+
+NMInvertedLists::~NMInvertedLists() {}
 /*****************************************
  * ArrayInvertedLists implementation
  ******************************************/
@@ -1018,6 +1130,7 @@ bool ReadOnlyArrayInvertedLists::is_readonly() const {
     FAISS_ASSERT(valid);
     return true;
 }
+
 
 /*****************************************************************
  * Meta-inverted list implementations

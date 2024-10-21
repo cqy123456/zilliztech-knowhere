@@ -27,6 +27,7 @@ struct IndexIVFFlat : IndexIVF {
             Index* quantizer,
             size_t d,
             size_t nlist_,
+            std::shared_ptr<uint8_t[]> raw_data,
             MetricType = METRIC_L2,
             bool is_cosine = false);
 

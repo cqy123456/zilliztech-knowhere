@@ -207,6 +207,7 @@ struct IndexIVFInterface : Level1Quantizer {
  * the distance estimation from the query to databse vectors.
  */
 struct IndexIVF : Index, IndexIVFInterface {
+    bool data_nm = false;
     /// Access to the actual data
     InvertedLists* invlists = nullptr;
     bool own_invlists = false;

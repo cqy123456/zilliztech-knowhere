@@ -40,14 +40,21 @@ IndexIVFFlat::IndexIVFFlat(
         Index* quantizer,
         size_t d,
         size_t nlist,
+        std::shared_ptr<uint8_t[]> raw_data, 
         MetricType metric,
         bool is_cosine)
         : IndexIVF(quantizer, d, nlist, sizeof(float) * d, metric) {
     this->is_cosine = is_cosine;
     code_size = sizeof(float) * d;
     by_residual = false;
-
-    replace_invlists(new ArrayInvertedLists(nlist, code_size, is_cosine), true);
+    if (raw_data != nullptr) {
+        invlists = new NMInvertedLists(nlist, code_size, raw_data, is_cosine);
+        own_invlists = true;
+        data_nm = true;
+    } else {
+        replace_invlists(new ArrayInvertedLists(nlist, code_size, is_cosine), true);
+        data_nm = false;
+    }
 }
 
 void IndexIVFFlat::restore_codes(
@@ -257,12 +264,15 @@ struct IVFFlatScanner : InvertedListScanner {
 };
 */
 
-template <MetricType metric, class C, bool use_sel>
+#include <xmmintrin.h>
+
+template <MetricType metric, class C, bool use_sel, bool nm_index>
 struct IVFFlatScanner : InvertedListScanner {
     size_t d;
+    const InvertedLists* inverted_list = nullptr;
 
-    IVFFlatScanner(size_t d, bool store_pairs, const IDSelector* sel)
-            : InvertedListScanner(store_pairs, sel), d(d) {
+    IVFFlatScanner(size_t d, bool store_pairs, const IDSelector* sel, const InvertedLists* in_inverted_list)
+            : InvertedListScanner(store_pairs, sel), d(d), inverted_list(in_inverted_list) {
         keep_max = is_similarity_metric(metric);
     }
 
@@ -292,6 +302,9 @@ struct IVFFlatScanner : InvertedListScanner {
             idx_t* idxi,
             size_t k,
             size_t& scan_cnt) const override {
+        //std::vector<id_t> ids(in_ids, in_ids + list_size);
+        //std::sort(ids.begin(), ids.end());
+       
         const float* list_vecs = (const float*)codes;
         size_t nup = 0;
 
@@ -311,13 +324,92 @@ struct IVFFlatScanner : InvertedListScanner {
                 }
             };
 
-        if constexpr (metric == METRIC_INNER_PRODUCT) {
-            fvec_inner_products_ny_if(
-                xi, list_vecs, d, list_size, filter, apply);
-        }
-        else {
-            fvec_L2sqr_ny_if(
-                xi, list_vecs, d, list_size, filter, apply);
+        if constexpr (nm_index) {
+            auto codes = inverted_list->get_codes(0);
+            auto y = (const float*)codes;
+            if constexpr (metric == METRIC_INNER_PRODUCT) {
+                auto i = 0;
+                // float dis_4[4];
+                // for (; i + 4 < list_size; i+=4) {
+                //     fvec_inner_product_batch_4(
+                //         xi,
+                //         y + ids[i + 0] * d,
+                //         y + ids[i + 1] * d,
+                //         y + ids[i + 2] * d,
+                //         y + ids[i + 3] * d,
+                //         d,
+                //         dis_4[0],
+                //         dis_4[1],
+                //         dis_4[2],
+                //         dis_4[3]
+                //     );
+                //     apply(dis_4[0], i);
+                //     apply(dis_4[1], i + 1);
+                //     apply(dis_4[2], i + 2);
+                //     apply(dis_4[3], i + 3);
+                // }
+                for (i = 0 ; i < list_size; i++) {
+                    _mm_prefetch(
+                            (const char*)( (const float*)codes + d * ids[i]),
+                            _MM_HINT_T0);
+                }
+                for ( i = 0; i < list_size; i++) {
+                    auto yj = (const float*)codes + d * ids[i];
+                    float dis = fvec_inner_product(xi, yj, d);
+                    if (i < list_size -1) {
+                        _mm_prefetch(
+                            (const char*)( (const float*)codes + d * ids[i + 1]),
+                            _MM_HINT_T0);
+                    }
+                    apply(dis, i);
+                }
+            } else {
+                auto i = 0;
+                // float dis_4[4];
+                // for (; i + 4 < list_size; i+=4) {
+                //     fvec_L2sqr_batch_4(
+                //         xi,
+                //         y + ids[i + 0] * d,
+                //         y + ids[i + 1] * d,
+                //         y + ids[i + 2] * d,
+                //         y + ids[i + 3] * d,
+                //         d,
+                //         dis_4[0],
+                //         dis_4[1],
+                //         dis_4[2],
+                //         dis_4[3]
+                //     );
+                //     apply(dis_4[0], i);
+                //     apply(dis_4[1], i + 1);
+                //     apply(dis_4[2], i + 2);
+                //     apply(dis_4[3], i + 3);
+                // }
+                for (i = 0 ; i < list_size; i++) {
+                    _mm_prefetch(
+                            (const char*)( (const float*)codes + d * ids[i]),
+                            _MM_HINT_T0);
+                }
+                for (i = 0;i < list_size; i++) {
+                    auto yj = y + d * ids[i];
+                    float dis = fvec_L2sqr(xi, yj, d);
+                    if (i < list_size -1) {
+                        _mm_prefetch(
+                            (const char*)( (const float*)codes + d * ids[i + 1]),
+                            _MM_HINT_T0);
+                    }
+                    apply(dis, i);
+                }
+            }
+
+        } else {
+            if constexpr (metric == METRIC_INNER_PRODUCT) {
+                fvec_inner_products_ny_if(
+                    xi, list_vecs, d, list_size, filter, apply);
+            }
+            else {
+                fvec_L2sqr_ny_if(
+                    xi, list_vecs, d, list_size, filter, apply);
+            }
         }
 
         return nup;
@@ -341,11 +433,22 @@ struct IVFFlatScanner : InvertedListScanner {
                     (code_norms == nullptr) ? dis_in : (dis_in / code_norms[j]);
             out.emplace_back(ids[j], dis);
         };
-        if constexpr (metric == METRIC_INNER_PRODUCT) {
-            fvec_inner_products_ny_if(
-                    xi, list_vecs, d, list_size, filter, apply);
+        if (inverted_list) {
+            auto codes = inverted_list->get_codes(0);
+            for (auto i = 0; i < list_size; i++) {
+                auto yj = (const float*)codes + d * ids[i];
+                float dis = metric == METRIC_INNER_PRODUCT
+                        ? fvec_inner_product(xi, yj, d)
+                        : fvec_L2sqr(xi, yj, d);
+                apply(dis, i);
+            }
         } else {
-            fvec_L2sqr_ny_if(xi, list_vecs, d, list_size, filter, apply);
+            if constexpr (metric == METRIC_INNER_PRODUCT) {
+                fvec_inner_products_ny_if(
+                        xi, list_vecs, d, list_size, filter, apply);
+            } else {
+                fvec_L2sqr_ny_if(xi, list_vecs, d, list_size, filter, apply);
+            }
         }
     }
 
@@ -371,14 +474,24 @@ struct IVFFlatScanner : InvertedListScanner {
                     res.add(dis, id);
                 }
             };
-
-        if constexpr (metric == METRIC_INNER_PRODUCT) {
-            fvec_inner_products_ny_if(
-                xi, list_vecs, d, list_size, filter, apply);
-        }
-        else {
-            fvec_L2sqr_ny_if(
-                xi, list_vecs, d, list_size, filter, apply);
+        if (inverted_list) {
+            auto codes = inverted_list->get_codes(0);
+            for (auto i = 0; i < list_size; i++) {
+                auto yj = (const float*)codes + d * ids[i];
+                float dis = metric == METRIC_INNER_PRODUCT
+                        ? fvec_inner_product(xi, yj, d)
+                        : fvec_L2sqr(xi, yj, d);
+                apply(dis, i);
+            }
+        } else {
+            if constexpr (metric == METRIC_INNER_PRODUCT) {
+                fvec_inner_products_ny_if(
+                    xi, list_vecs, d, list_size, filter, apply);
+            }
+            else {
+                fvec_L2sqr_ny_if(
+                    xi, list_vecs, d, list_size, filter, apply);
+            }
         }
     }
 };
@@ -518,7 +631,8 @@ template <bool use_sel>
 InvertedListScanner* get_InvertedListScanner1(
         const IndexIVFFlat* ivf,
         bool store_pairs,
-        const IDSelector* sel) {
+        const IDSelector* sel, 
+        const InvertedLists* inverted_list) {
     // A specialized version for Knowhere.
     //   It is needed to get rid of virtual function calls, because sel
     //   can filter out 99% of samples, so the cost of virtual function calls
@@ -536,18 +650,32 @@ InvertedListScanner* get_InvertedListScanner1(
             FAISS_THROW_MSG("metric type not supported");
         }
     }
-
+    //const bool nm_index = inverted_list != nullptr;
     // default faiss version
-    if (ivf->metric_type == METRIC_INNER_PRODUCT) {
-        return new IVFFlatScanner<
-                METRIC_INNER_PRODUCT,
-                CMin<float, int64_t>,
-                use_sel>(ivf->d, store_pairs, sel);
-    } else if (ivf->metric_type == METRIC_L2) {
-        return new IVFFlatScanner<METRIC_L2, CMax<float, int64_t>, use_sel>(
-                ivf->d, store_pairs, sel);
+    if (inverted_list != nullptr) {
+        if (ivf->metric_type == METRIC_INNER_PRODUCT) {
+            return new IVFFlatScanner<
+                    METRIC_INNER_PRODUCT,
+                    CMin<float, int64_t>,
+                    use_sel, true>(ivf->d, store_pairs, sel, inverted_list);
+        } else if (ivf->metric_type == METRIC_L2) {
+            return new IVFFlatScanner<METRIC_L2, CMax<float, int64_t>, use_sel, true>(
+                    ivf->d, store_pairs, sel, inverted_list);
+        } else {
+            FAISS_THROW_MSG("metric type not supported");
+        }
     } else {
-        FAISS_THROW_MSG("metric type not supported");
+        if (ivf->metric_type == METRIC_INNER_PRODUCT) {
+            return new IVFFlatScanner<
+                    METRIC_INNER_PRODUCT,
+                    CMin<float, int64_t>,
+                    use_sel, false>(ivf->d, store_pairs, sel, inverted_list);
+        } else if (ivf->metric_type == METRIC_L2) {
+            return new IVFFlatScanner<METRIC_L2, CMax<float, int64_t>, use_sel, false>(
+                    ivf->d, store_pairs, sel, inverted_list);
+        } else {
+            FAISS_THROW_MSG("metric type not supported");
+        }
     }
 }
 
@@ -557,9 +685,9 @@ InvertedListScanner* IndexIVFFlat::get_InvertedListScanner(
         bool store_pairs,
         const IDSelector* sel) const {
     if (sel) {
-        return get_InvertedListScanner1<true>(this, store_pairs, sel);
+        return get_InvertedListScanner1<true>(this, store_pairs, sel, data_nm? this->invlists : nullptr);
     } else {
-        return get_InvertedListScanner1<false>(this, store_pairs, sel);
+        return get_InvertedListScanner1<false>(this, store_pairs, sel, data_nm? this->invlists : nullptr);
     }
 }
 
@@ -577,7 +705,7 @@ IndexIVFFlatCC::IndexIVFFlatCC(
         size_t ssize,
         MetricType metric,
         bool is_cosine)
-        : IndexIVFFlat(quantizer, d, nlist, metric, is_cosine) {
+        : IndexIVFFlat(quantizer, d, nlist, nullptr, metric, is_cosine) {
     replace_invlists(new ConcurrentArrayInvertedLists(nlist, code_size, ssize, is_cosine), true);
 }
 
@@ -592,7 +720,7 @@ IndexIVFFlatDedup::IndexIVFFlatDedup(
         size_t d,
         size_t nlist_,
         MetricType metric_type)
-        : IndexIVFFlat(quantizer, d, nlist_, metric_type) {}
+        : IndexIVFFlat(quantizer, d, nlist_, nullptr, metric_type) {}
 
 void IndexIVFFlatDedup::train(idx_t n, const float* x) {
     std::unordered_map<uint64_t, idx_t> map;
