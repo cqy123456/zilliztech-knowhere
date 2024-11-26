@@ -525,7 +525,7 @@ IvfIndexNode<DataType, IndexType>::TrainInternal(const DataSetPtr dataset, std::
         std::unique_ptr<faiss::IndexFlat> qzr =
             std::make_unique<faiss::IndexFlatElkan>(dim, metric.value(), false, use_elkan);
         // create base index. it does not own qzr
-        auto base_index = std::make_unique<faiss::IndexIVFPQFastScan>(qzr.get(), dim, nlist, (dim + 1) / 2, 4,
+        auto base_index = std::make_unique<faiss::IndexIVFPQFastScan>(qzr.get(), dim, nlist, (dim + 1) / 4, 4,
                                                                       is_cosine, metric.value());
         // create scann index, which does not base_index by default,
         //    but owns the refine index by default omg
