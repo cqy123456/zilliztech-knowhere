@@ -631,6 +631,16 @@ void merge_knn_results(
         typename C::T* distances,
         idx_t* labels);
 
+template <class idx_t, class C>
+void reorder_2_heaps(
+    size_t n,
+    size_t k,
+    idx_t* __restrict labels,
+    float* __restrict distances,
+    size_t k_base,
+    const idx_t* __restrict base_labels,
+    const float* __restrict base_distances);
+
 } // namespace faiss
 
 #endif /* FAISS_Heap_h */

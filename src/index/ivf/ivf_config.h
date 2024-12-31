@@ -102,6 +102,7 @@ class ScannConfig : public IvfFlatConfig {
  public:
     CFG_INT reorder_k;
     CFG_BOOL with_raw_data;
+    CFG_INT  m;
     KNOHWERE_DECLARE_CONFIG(ScannConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(reorder_k)
             .description("reorder k used for refining")
@@ -113,6 +114,11 @@ class ScannConfig : public IvfFlatConfig {
             .set_default(true)
             .for_static()
             .for_train();
+        KNOWHERE_CONFIG_DECLARE_FIELD(m)
+            .description("m")
+            .allow_empty_without_default()
+            .for_train()
+            .set_range(1, 65536);
     }
 
     Status

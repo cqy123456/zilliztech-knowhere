@@ -37,6 +37,14 @@ IsFlatIndex(const knowhere::IndexType& index_type) {
 }
 
 template <typename DataType>
+float
+GetL2Norm(const DataType* x, int32_t d);
+
+template <typename DataType>
+std::vector<float>
+GetL2Norms(const DataType* x, int32_t d, int32_t n);
+
+template <typename DataType>
 extern float
 NormalizeVec(DataType* x, int32_t d);
 
@@ -51,6 +59,10 @@ CopyAndNormalizeVecs(const DataType* x, size_t rows, int32_t dim);
 template <typename DataType>
 extern void
 NormalizeDataset(const DataSetPtr dataset);
+
+template <typename DataType>
+extern std::tuple<DataSetPtr, std::vector<float>>
+CopyAndNormalizeDataset(const DataSetPtr dataset);
 
 constexpr inline uint64_t seed = 0xc70f6907UL;
 

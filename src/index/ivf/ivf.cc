@@ -953,7 +953,6 @@ IvfIndexNode<DataType, IndexType>::AnnIterator(const DataSetPtr dataset, std::un
 
         size_t nprobe = ivf_cfg.nprobe.value();
         // set iterator_refine_ratio = 0.0. If quantizer != flat, faiss:indexivf will not keep raw data;
-        // TODO: if SCANN support Iterator, iterator_refine_ratio should be set.
         float iterator_refine_ratio = 0.0f;
         if constexpr (std::is_same_v<IndexType, faiss::IndexScaNN>) {
             if (HasRawData(ivf_cfg.metric_type.value())) {
