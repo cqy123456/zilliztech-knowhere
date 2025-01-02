@@ -438,7 +438,8 @@ class IndexNode : public Object {
 // Internally, this structure uses the same priority queue class, but may multiply all
 //   incoming distances to (-1) value in order to turn max priority queue into a min one.
 class IndexIterator : public IndexNode::iterator {
- public:
+    friend class IndexIterator;
+public:
     IndexIterator(bool larger_is_closer, float refine_ratio = 0.0f, bool retain_iterator_order = false)
         : refine_ratio_(refine_ratio),
           refine_(refine_ratio != 0.0f),

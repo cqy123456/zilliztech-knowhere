@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "knowhere/file_manager.h"
+#include "index/data_view_dense_index/index_node_with_data_view_refiner.h"
 
 namespace knowhere {
 
@@ -75,7 +76,7 @@ class Object {
 
 template <typename T>
 class Pack : public Object {
-    static_assert(std::is_same_v<T, std::shared_ptr<knowhere::FileManager>>,
+    static_assert(std::is_same_v<T, std::shared_ptr<knowhere::FileManager>> || std::is_same_v<T, knowhere::ViewDataOp>,
                   "IndexPack only support std::shared_ptr<knowhere::FileManager> by far.");
 
  public:

@@ -587,6 +587,7 @@ class BaseConfig : public Config {
     CFG_INT64 dim;  // just used for config verify
     CFG_STRING metric_type;
     CFG_INT k;
+    CFG_FLOAT knn_refine_ratio;
     CFG_INT num_build_thread;
     CFG_BOOL retrieve_friendly;
     CFG_STRING data_path;
@@ -758,6 +759,10 @@ class BaseConfig : public Config {
             .for_iterator()
             .for_deserialize()
             .for_deserialize_from_file();
+        KNOWHERE_CONFIG_DECLARE_FIELD(knn_refine_ratio)
+            .set_default(1.0f)
+            .description("search refine_ratio * k results then refine")
+            .for_search();
     }
 };
 }  // namespace knowhere

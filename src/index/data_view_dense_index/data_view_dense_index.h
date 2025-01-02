@@ -77,20 +77,20 @@ struct DataViewIndexBase {
     Add(idx_t n, const void* x, const float* norms) = 0;
 
     virtual void
-    Search(idx_t n, const void* x, idx_t k, float* distances, idx_t* labels, const BitsetView& bitset) const = 0;
+    Search(const idx_t n, const void* x, const idx_t k, float* distances, idx_t* labels, const BitsetView& bitset) const = 0;
     
     // knn search on selected_ids, selected_ids_lims
     virtual void
-    SearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, idx_t k, float* out_dist, idx_t* out_ids)  const = 0;
+    SearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const idx_t k, float* out_dist, idx_t* out_ids)  const = 0;
 
     virtual RangeSearchResult
-    RangeSearch(idx_t n, const void* x, float radius, float range_filter, const BitsetView& bitset) const = 0;
+    RangeSearch(const idx_t n, const void* x, const float radius, const float range_filter, const BitsetView& bitset) const = 0;
 
     virtual RangeSearchResult
-    RangeSearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, float radius, float range_filter) const = 0;
+    RangeSearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const float radius, const float range_filter) const = 0;
 
     virtual void
-    ComputeDistanceSubset(const void* x, idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels)  const = 0;
+    ComputeDistanceSubset(const void* x, const idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels)  const = 0;
 };
 
 struct DataViewIndexFlat : DataViewIndexBase {
@@ -124,19 +124,19 @@ struct DataViewIndexFlat : DataViewIndexBase {
     }
 
     void
-    Search(idx_t n, const void* x, idx_t k, float* distances, idx_t* labels, const BitsetView& bitset) const override;
+     Search(const idx_t n, const void* x, const idx_t k, float* distances, idx_t* labels, const BitsetView& bitset) const override;
 
     void
-    SearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, idx_t k, float* out_dist, idx_t* out_ids) const override;
+    SearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const idx_t k, float* out_dist, idx_t* out_ids)  const override;
     
     RangeSearchResult
-    RangeSearch(idx_t n, const void* x, float radius, float range_filter, const BitsetView& bitset) const override;
+     RangeSearch(const idx_t n, const void* x, const float radius, const float range_filter, const BitsetView& bitset) const override;
 
     RangeSearchResult
-    RangeSearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, float radius, float range_filter) const override;
+    RangeSearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const float radius, const float range_filter) const override;
 
     void
-    ComputeDistanceSubset(const void* x, idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels) const override;
+    ComputeDistanceSubset(const void* x, const idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels) const override;
 };
 
 
@@ -294,7 +294,7 @@ void exhaustive_seq_impl(
     }
 }
 
-void DataViewIndexFlat::Search(idx_t n, const void* x, idx_t k, float* distances, idx_t* labels, const BitsetView& bitset) const {
+void DataViewIndexFlat::Search(const idx_t n, const void* x, const idx_t k, float* distances, idx_t* labels, const BitsetView& bitset)const {
     auto computer = select_data_view_computer(this);
     std::shared_ptr<float[]> base_norms = nullptr;
     if (is_cosine) {
@@ -362,7 +362,7 @@ void DataViewIndexFlat::Search(idx_t n, const void* x, idx_t k, float* distances
 }
 
 void
-DataViewIndexFlat::SearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, idx_t k, float* out_dist, idx_t* out_ids) const {
+DataViewIndexFlat::SearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const idx_t k, float* out_dist, idx_t* out_ids)  const {
     for (auto i = 0; i < n; i++) {
         auto base_ids = ids + ids_num_lims[i];
         auto base_n = ids_num_lims[i+1] - ids_num_lims[i];
@@ -384,7 +384,7 @@ DataViewIndexFlat::SearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, id
     }
 }
 
-RangeSearchResult DataViewIndexFlat::RangeSearch(idx_t n, const void* x, float radius, float range_filter, const BitsetView& bitset) const {
+RangeSearchResult DataViewIndexFlat::RangeSearch(const idx_t n, const void* x, const float radius, const float range_filter, const BitsetView& bitset) const {
     std::vector<std::vector<float>> result_dist_array(n);
     std::vector<std::vector<idx_t>> result_id_array(n);
     auto computer = select_data_view_computer(this);
@@ -450,7 +450,7 @@ RangeSearchResult DataViewIndexFlat::RangeSearch(idx_t n, const void* x, float r
 }
 
 RangeSearchResult
-DataViewIndexFlat::RangeSearchWithIds(idx_t n, const void* x, idx_t* ids_num_lims, idx_t* ids, float radius, float range_filter) const {
+DataViewIndexFlat::RangeSearchWithIds(const idx_t n, const void* x, const idx_t* ids_num_lims, const idx_t* ids, const float radius, const float range_filter) const {
     std::vector<std::vector<float>> result_dist_array(n);
     std::vector<std::vector<idx_t>> result_id_array(n);
     auto is_ip = metric_type == metric::IP;
@@ -487,7 +487,7 @@ DataViewIndexFlat::RangeSearchWithIds(idx_t n, const void* x, idx_t* ids_num_lim
     return GetRangeSearchResult(result_dist_array, result_id_array, is_ip, n, radius, range_filter);
 }
 
-void DataViewIndexFlat::ComputeDistanceSubset(const void* x, idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels) const {
+void DataViewIndexFlat::ComputeDistanceSubset(const void* x, const idx_t sub_y_n, float* x_y_distances, const idx_t* x_y_labels) const {
     auto computer = select_data_view_computer(this);
     computer->set_query((const float*)(x));
     const int64_t* __restrict idsj = x_y_labels;

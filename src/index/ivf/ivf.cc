@@ -22,6 +22,7 @@
 #include "faiss/IndexScalarQuantizer.h"
 #include "faiss/index_io.h"
 #include "index/ivf/ivf_config.h"
+#include "index/data_view_dense_index/index_node_with_data_view_refiner.h"
 #include "io/memory_io.h"
 #include "knowhere/bitsetview_idselector.h"
 #include "knowhere/comp/thread_pool.h"
@@ -1265,4 +1266,13 @@ KNOWHERE_MOCK_REGISTER_DENSE_FLOAT_ALL_GLOBAL(IVF_SQ8, IvfIndexNode, knowhere::f
 KNOWHERE_MOCK_REGISTER_DENSE_FLOAT_ALL_GLOBAL(IVF_SQ_CC, IvfIndexNode, knowhere::feature::NONE,
                                               faiss::IndexIVFScalarQuantizerCC)
 
+// with data view refiner
+//KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER_ALL_GLOBAL(SCANN_WITH_DATA_VIEW_REFINER, IvfIndexNode<fp32, faiss::IndexScaNN>, knowhere::feature::NONE, knowhere::IndexEnum::INDEX_FAISS_SCANN)
+// const char INDEX_FAISS_SCANN_PREFIX[] = "SCANN";
+// auto scann_with_data_view_refiner = IndexFactory::Instance().Register<bf16>("scann_with_data_view_refiner", 
+//         [](const ViewDataOp& op, const int32_t& version, const Object& object) { 
+//             return (Index<IndexNodeWithDataViewRefiner<bf16, INDEX_FAISS_SCANN_PREFIX>>::Create(                                   
+//                 std::make_unique<IndexNodeWithDataViewRefiner<bf16, INDEX_FAISS_SCANN_PREFIX>>(op))); 
+//         }, 
+//         knowhere::feature::NONE | knowhere::feature::BF16);
 }  // namespace knowhere

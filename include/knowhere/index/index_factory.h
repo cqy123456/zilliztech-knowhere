@@ -99,6 +99,15 @@ class IndexFactory {
         },                                                                                                 \
         data_type, typeCheck<data_type>(features), features)
 
+// #define KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER(name, base_index_name, base_index_node, base_index_type, data_type, features, ...) \
+//     KNOWHERE_REGISTER_STATIC(name, base_index_node, data_type, ##__VA_ARGS__)                            \
+//     KNOWHERE_REGISTER_GLOBAL(                                                                       \
+//         name,                                                                                       \
+//         [](const int32_t& version, const Object& object) {                                          \
+//             return (Index<IndexNodeWithDataViewRefiner<data_type, >>::Create(                         \
+//                 std::make_unique<base_index_node<base_index_type, ##__VA_ARGS__>>(version, object)));          \
+//         },                                                                                          \
+//         data_type, typeCheck<data_type>(features), features)
 // Below are some group index registration methods for batch registration of indexes that support multiple data types.
 // Please review carefully and select with caution
 
@@ -137,6 +146,12 @@ class IndexFactory {
     KNOWHERE_MOCK_REGISTER_GLOBAL(name, index_node, bf16, (features | knowhere::feature::BF16), ##__VA_ARGS__); \
     KNOWHERE_MOCK_REGISTER_GLOBAL(name, index_node, fp16, (features | knowhere::feature::FP16), ##__VA_ARGS__); \
     KNOWHERE_SIMPLE_REGISTER_GLOBAL(name, index_node, fp32, (features | knowhere::feature::FLOAT32), ##__VA_ARGS__);
+// register vector index with data view refiner supporting ALL_DENSE_FLOAT_TYPE(float32, bf16, fp16) data types
+// register vector index supporting ALL_DENSE_FLOAT_TYPE(float32, bf16, fp16) data types
+#define KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER_ALL_GLOBAL(name, base_index_node, base_data_type, features, ...)          \
+    KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER(name, base_index_node, base_data_type, bf16, (features | knowhere::feature::BF16), ##__VA_ARGS__); \
+    KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER(name, base_index_node, base_data_type, fp16, (features | knowhere::feature::FP16), ##__VA_ARGS__); \
+    KNOWHERE_REGISTER_GLOBAL_WITH_DATA_VIEW_REFINER(name, base_index_node, base_data_type, fp32, (features | knowhere::feature::FLOAT32), ##__VA_ARGS__);
 
 #define KNOWHERE_REGISTER_GLOBAL_WITH_THREAD_POOL(name, index_node, data_type, features, thread_size)    \
     KNOWHERE_REGISTER_STATIC(name, index_node, data_type)                                                \

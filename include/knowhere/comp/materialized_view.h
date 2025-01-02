@@ -13,7 +13,7 @@
 
 #include <charconv>
 #include <cstdint>
-#include <nlohmann/json.hpp>
+#include "nlohmann/json.hpp"
 #include <unordered_map>
 
 namespace knowhere {

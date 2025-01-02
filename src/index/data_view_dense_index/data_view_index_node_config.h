@@ -13,16 +13,7 @@
 #include "knowhere/config.h"
 #include "index/ivf/ivf_config.h"
 namespace knowhere {
-class IndexRefineConfig : public Config {
-    CFG_FLOAT refine_ratio;
-    KNOHWERE_DECLARE_CONFIG(IndexRefineConfig) {
-        KNOWHERE_CONFIG_DECLARE_FIELD(refine_ratio)
-            .set_default(1.0f)
-            .description("search refine_ratio * k results then refine")
-            .for_search();
-    }
-};
-class BaseOffsetIndexRefineConfig: public BaseConfig,IndexRefineConfig {};
-class OffsetIndexSCANNConfig: public  ScannConfig, IndexRefineConfig {};
+class IndexWithDataViewRefinerConfig: public BaseConfig {};
+class IndexSCANNWithDataViewReinferConfig: public  ScannConfig {};
 } // namespace knowhere
 #endif
