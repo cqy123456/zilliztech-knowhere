@@ -197,7 +197,7 @@ fvec_hook(std::string& simd_type) {
         fvec_madd_and_argmin = fvec_madd_and_argmin_sse;
 
         fvec_inner_product_batch_4 = fvec_inner_product_batch_4_avx512;
-        fvec_L2sqr_batch_4 = fvec_L2sqr_batch_4_avx512;
+        fvec_L2sqr_batch_4 = fvec_L2sqr_batch_4_avx;
 
         ivec_inner_product = ivec_inner_product_avx512;
         ivec_L2sqr = ivec_L2sqr_avx512;
