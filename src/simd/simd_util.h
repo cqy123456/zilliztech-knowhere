@@ -135,7 +135,7 @@ void fvec_L2sqr_ny_dim4(float* dis, const float* x, const float* y, size_t d, si
         dis[ny - y_i + 1] = _mm_cvtss_f32(sum_high);
         y_i -=2;
     }
-    if (y_i >=0) {
+    if (y_i > 0) {
         float dis1, dis2;
         dis1 = (x[0] - y_i_addr[0]) * (x[0] - y_i_addr[0]);
         dis2 = (x[1] - y_i_addr[1]) * (x[1] - y_i_addr[1]);
