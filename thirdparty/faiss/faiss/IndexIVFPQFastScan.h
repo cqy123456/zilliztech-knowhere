@@ -62,6 +62,11 @@ struct IndexIVFPQFastScan : IndexIVFFastScan {
 
     IndexIVFPQFastScan();
 
+     ~IndexIVFPQFastScan() {
+      pq.clear_transposed_centroids();
+
+     };
+
     // built from an IndexIVFPQ
     explicit IndexIVFPQFastScan(const IndexIVFPQ& orig, int bbs = 32);
 

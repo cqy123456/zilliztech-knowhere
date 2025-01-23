@@ -207,6 +207,24 @@ fvec_L2sqr_ny_nearest_ref(float* __restrict distances_tmp_buffer, const float* _
     return nearest_idx;
 }
 
+size_t
+fvec_inner_product_ny_nearest_ref(float* __restrict distances_tmp_buffer, const float* __restrict x, const float* __restrict y,
+                          size_t d, size_t ny) {
+    fvec_inner_products_ny_ref(distances_tmp_buffer, x, y, d, ny);
+
+    size_t nearest_idx = 0;
+    float max_dis = -HUGE_VALF;
+
+    for (size_t i = 0; i < ny; i++) {
+        if (distances_tmp_buffer[i] > max_dis) {
+            max_dis = distances_tmp_buffer[i];
+            nearest_idx = i;
+        }
+    }
+
+    return nearest_idx;
+}
+
 /// compute ny square L2 distance between x and a set of transposed contiguous
 /// y vectors and return the index of the nearest vector.
 /// squared lengths of y should be provided as well

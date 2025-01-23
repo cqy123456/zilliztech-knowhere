@@ -107,6 +107,21 @@ fp16_vec_norm_L2sqr_avx512(const knowhere::fp16* x, size_t d);
 float
 bf16_vec_norm_L2sqr_avx512(const knowhere::bf16* x, size_t d);
 
+void
+fvec_L2sqr_ny_avx512(float* dis, const float* x, const float* y, size_t d, size_t ny);
+
+size_t
+fvec_L2sqr_ny_nearest_avx512(float* distances_tmp_buffer, const float* x, const float* y, size_t d, size_t ny);
+
+
+void
+fvec_L2sqr_ny_transposed_avx512(float* dis, const float* x, const float* y, const float* y_sqlen, size_t d,
+                             size_t d_offset, size_t ny);
+
+size_t
+fvec_L2sqr_ny_nearest_y_transposed_avx512(float* distances_tmp_buffer, const float* x, const float* y,
+                                       const float* y_sqlen, size_t d, size_t d_offset, size_t ny);
+
 }  // namespace faiss
 
 #endif /* DISTANCES_AVX512_H */

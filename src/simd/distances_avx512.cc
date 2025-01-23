@@ -20,9 +20,76 @@
 
 #include "faiss/impl/platform_macros.h"
 #include "simd_util.h"
+#include <algorithm>
+#include <iostream>
 
 namespace faiss {
+static inline size_t select_min_value(float* __restrict distances_tmp_buffer, size_t ny) {
+   size_t i = 0;
+    size_t nearest_idx = 0;
+    float min_dis = HUGE_VALF;
+    while  (ny - i >= 16) {
+        __m512 v = _mm512_loadu_ps(distances_tmp_buffer + i);
+        float min_val = _mm512_reduce_min_ps(v);
+        if (min_val < min_dis) {
+            __mmask16 mask = _mm512_cmpeq_ps_mask(v, _mm512_set1_ps(min_val));
+            uint16_t mask_int = _mm512_mask2int(mask);
+            int index = __builtin_ctz(mask_int) + i;
+            min_dis = min_val;
+            nearest_idx = index;
+        }
+        i += 16;
+    }
+    
+    for (; i < ny; i++) {
+        if (distances_tmp_buffer[i] < min_dis) {
+            min_dis = distances_tmp_buffer[i];
+            nearest_idx = i;
+        }
+    }
 
+   return nearest_idx;
+}
+
+
+static inline size_t select_max_value(float* __restrict distances_tmp_buffer, size_t ny) {
+//     size_t gt_idx = 0;
+//     float gt_dis = -HUGE_VALF;
+//    for (auto j = 0; j < ny; j++) {
+//     std::cout <<distances_tmp_buffer[j]<< " ";
+//         if (distances_tmp_buffer[j] > gt_dis) {
+//             gt_idx = j;
+//             gt_dis = distances_tmp_buffer[j];
+//         }
+//    }
+// //    std::cout <<std::endl;
+// //    std::cout <<"gt id, dis" << gt_idx<<" "<<gt_dis<<std::endl;
+   size_t i = 0;
+    size_t nearest_idx = 0;
+    float max_dis = -HUGE_VALF;
+    while  (ny - i >= 16) {
+        __m512 v = _mm512_loadu_ps(distances_tmp_buffer + i);
+        float max_val = _mm512_reduce_max_ps(v);
+        if (max_val > max_dis) {
+            __mmask16 mask = _mm512_cmpeq_ps_mask(v, _mm512_set1_ps(max_val));
+            uint16_t mask_int = _mm512_mask2int(mask);
+            int index = __builtin_ctz(mask_int) + i;
+            max_dis = max_val;
+            nearest_idx = index;
+        }
+        i += 16;
+    }
+    
+    for (; i < ny; i++) {
+        if (distances_tmp_buffer[i] > max_dis) {
+            max_dis = distances_tmp_buffer[i];
+            nearest_idx = i;
+        }
+    }
+
+   // std::cout <<"nearest_idx id, dis" << nearest_idx<<" "<<max_dis<<std::endl;
+   return nearest_idx;
+}
 // reads 0 <= d < 4 floats as __m128
 static inline __m128
 masked_read(int d, const float* x) {
@@ -699,7 +766,7 @@ fvec_norm_L2sqr_avx512(const float* x, size_t d) {
         x += 16;
         d -= 16;
     }
-    if (d > 0) {
+    if (d >= 0) {
         const __mmask16 mask = (1U << d) - 1U;
         auto mx = _mm512_maskz_loadu_ps(mask, x);
         m512_res = _mm512_fmadd_ps(mx, mx, m512_res);
@@ -759,6 +826,123 @@ bf16_vec_norm_L2sqr_avx512(const knowhere::bf16* x, size_t d) {
         m512_res = _mm512_fmadd_ps(mx, mx, m512_res);
     }
     return _mm512_reduce_add_ps(m512_res);
+}
+
+FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
+void
+fvec_L2sqr_ny_avx512(float* dis, const float* x, const float* y, size_t d, size_t ny) {
+    size_t i = 0;
+    for (; i < ny; i+=4) {
+        const float* __restrict y1 = y + d * i;
+        const float* __restrict y2 = y + d * (i + 1);
+        const float* __restrict y3 = y + d * (i + 2);
+        const float* __restrict y4 = y + d * (i + 3);
+        fvec_L2sqr_batch_4_avx512(x, y1, y2,y3,y4,d,dis[i],dis[i+1],dis[i+2],dis[i+3]);
+    }
+    while (i < ny) {
+        const float* __restrict y_i = y + d * i;
+        dis[i] = fvec_L2sqr_avx512(x, y_i, d);
+        y += d;
+        i++;
+    }
+}
+FAISS_PRAGMA_IMPRECISE_FUNCTION_END
+
+size_t
+fvec_L2sqr_ny_nearest_avx512(float* __restrict distances_tmp_buffer, const float* __restrict x, const float* __restrict y,
+                          size_t d, size_t ny) {
+    if (d == 4) {
+        fvec_L2sqr_ny_dim4(distances_tmp_buffer, x, y, d, ny);
+    } else {
+        fvec_L2sqr_ny_avx512(distances_tmp_buffer, x, y, d, ny);   
+    }
+    return select_min_value(distances_tmp_buffer, ny);
+}
+
+void
+fvec_L2sqr_ny_transposed_avx512(float* dis, const float* x, const float* y, const float* y_sqlen, size_t d,
+                             size_t d_offset, size_t ny) {
+    auto x_norm = fvec_norm_L2sqr_avx512(x, d);
+    size_t n = ny;
+     while (n >=64) {
+        const float* y_addr = y + (ny - n);
+        __m512 res1 = _mm512_loadu_ps(y_sqlen + (ny - n));
+        __m512 res2 = _mm512_loadu_ps(y_sqlen + (ny - n) + 16);
+        __m512 res3 = _mm512_loadu_ps(y_sqlen + (ny - n) + 32);
+        __m512 res4 = _mm512_loadu_ps(y_sqlen + (ny - n) + 48);
+        res1 = res1 + x_norm;
+        res2 = res2 + x_norm;
+        res3 = res3 + x_norm;
+        res4 = res4 + x_norm;
+        for (auto d_i = 0; d_i < d; d_i++) {
+            auto mx = _mm512_set1_ps(x[d_i]);
+            auto my1 = _mm512_loadu_ps(y_addr);
+            auto my2 = _mm512_loadu_ps(y_addr + 16);
+            auto my3 = _mm512_loadu_ps(y_addr + 32);
+            auto my4 = _mm512_loadu_ps(y_addr + 48);
+            my1 = (-2) * _mm512_mul_ps(my1, mx);
+            my2 = (-2) * _mm512_mul_ps(my2, mx);
+            my3 = (-2) * _mm512_mul_ps(my3, mx);
+            my4 = (-2) * _mm512_mul_ps(my4, mx);
+            res1 = _mm512_add_ps(my1, res1);
+            res2 = _mm512_add_ps(my2, res2);
+            res3 = _mm512_add_ps(my3, res3);
+            res4 = _mm512_add_ps(my4, res4);
+            y_addr += d_offset;
+        }
+        _mm512_storeu_ps(dis+(ny - n), res1);
+        _mm512_storeu_ps(dis+(ny - n) + 16, res2);
+        _mm512_storeu_ps(dis+(ny - n) + 32, res3);
+        _mm512_storeu_ps(dis+(ny - n) + 48, res4);
+        n -= 64;
+    }
+    if (n >=32) {
+        const float* y_addr = y + (ny - n);
+        __m512 res1 = _mm512_loadu_ps(y_sqlen + (ny - n));
+        __m512 res2 = _mm512_loadu_ps(y_sqlen + (ny - n) + 16);
+        res1 = res1 + x_norm;
+        res2 = res2 + x_norm;
+        for (auto d_i = 0; d_i < d; d_i++) {
+            auto mx = _mm512_set1_ps(x[d_i]);
+            auto my1 = _mm512_loadu_ps(y_addr);
+            auto my2 = _mm512_loadu_ps(y_addr + 16);
+            my1 = (-2) * _mm512_mul_ps(my1, mx);
+            my2 = (-2) * _mm512_mul_ps(my2, mx);
+            res1 = _mm512_add_ps(my1, res1);
+            res2 = _mm512_add_ps(my2, res2);
+            y_addr += d_offset;
+        }
+        _mm512_storeu_ps(dis+(ny - n), res1);
+        _mm512_storeu_ps(dis+(ny - n) + 16, res2);
+        n -= 32;
+    }
+    if (n >= 16) {
+         const float* y_addr = y + (ny - n);
+         __m512 res = _mm512_loadu_ps(y_sqlen + (ny - n));
+         res = res + x_norm;
+        for (auto d_i = 0; d_i < d; d_i++) {
+            auto mx = _mm512_set1_ps(x[d_i]);
+            auto my1 = _mm512_loadu_ps(y_addr);
+            my1 = (-2) * _mm512_mul_ps(my1, mx);
+            res = _mm512_add_ps(my1, res);
+            y_addr += d_offset;
+        }
+        _mm512_storeu_ps(dis+(ny - n), res);
+        n -= 16;
+    }
+    while (n > 0) {
+        dis[ny -n ]= x_norm + y_sqlen[ny-n];
+        for (auto d_i = 0; d_i < d; d_i++) {
+            dis[ny -n ] += (-2) * (x[d_i] * y[ny-n + d_i * d_offset]);
+        }
+    } 
+}
+
+size_t
+fvec_L2sqr_ny_nearest_y_transposed_avx512(float* distances_tmp_buffer, const float* x, const float* y,
+                                       const float* y_sqlen, size_t d, size_t d_offset, size_t ny) {
+    fvec_L2sqr_ny_transposed_avx512(distances_tmp_buffer, x, y, y_sqlen, d, d_offset, ny);
+    return select_min_value(distances_tmp_buffer, ny);
 }
 
 }  // namespace faiss
