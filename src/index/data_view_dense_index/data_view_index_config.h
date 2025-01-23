@@ -55,7 +55,7 @@ AdaptToBaseIndexConfig(Config* cfg, PARAM_TYPE param_type, size_t dim) {
         return;
     if (auto base_cfg = dynamic_cast<ScannWithDataViewRefinerConfig*>(cfg)) {
         if (base_cfg->metric_type.value() == metric::COSINE) {
-            base_cfg->metric_type.value() = metric::IP;
+            base_cfg->metric_type.value() = metric::L2;
         }
         switch (param_type) {
             case PARAM_TYPE::TRAIN: {
@@ -67,6 +67,7 @@ AdaptToBaseIndexConfig(Config* cfg, PARAM_TYPE param_type, size_t dim) {
                 } else {
                     base_cfg->dim = dim;
                 }
+                base_cfg->use_elkan = false;
                 break;
             }
             case PARAM_TYPE::SEARCH: {

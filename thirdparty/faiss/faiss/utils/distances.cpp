@@ -21,6 +21,7 @@
 #include "knowhere/object.h"
 
 #include <faiss/FaissHook.h>
+#include "simd/distances_avx.h"
 #include <faiss/impl/AuxIndexStructures.h>
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/impl/IDSelector.h>
@@ -967,6 +968,30 @@ void all_inner_product(
     }
 }
 
+void exhaustive_L2sqr_nearest_imp(
+        const float* __restrict x,
+        const float* __restrict y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        float* vals,
+        int64_t* ids) {
+    const size_t ny_batch_size = 256;
+    auto sub_dis = std::make_unique<float []>(std::min(ny_batch_size,ny));
+    for (int64_t i = 0; i < nx; i++) {
+        const float* x_i = x + i * d;
+        // compute distances
+        for (auto j = 0; j < ny; j += ny_batch_size) {
+            const float* y_j = y + j * d;
+            const size_t y_j_n = std::min(ny_batch_size, ny - j);
+            auto nearest_id = fvec_L2sqr_ny_nearest(sub_dis.get(), x_i, y_j, d, y_j_n);
+            ids[i] = nearest_id + j;
+            vals[i] = sub_dis[nearest_id];
+        }
+    }
+}
+
+
 void knn_L2sqr(
         const float* x,
         const float* y,
@@ -988,6 +1013,10 @@ void knn_L2sqr(
     }
     if (auto sela = dynamic_cast<const IDSelectorArray*>(sel)) {
         knn_L2sqr_by_idx(x, y, sela->ids, d, nx, ny, sela->n, k, vals, ids, 0);
+        return;
+    }
+    if (k == 1 && sel == nullptr) {
+        exhaustive_L2sqr_nearest_imp(x, y, d, nx, ny, vals, ids);
         return;
     }
     // // todo aguzhva: this is disabled for knowhere, because it requires 

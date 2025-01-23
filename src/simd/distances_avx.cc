@@ -19,9 +19,20 @@
 
 #include "faiss/impl/platform_macros.h"
 #include "simd_util.h"
+#include <iostream>
 
 namespace faiss {
+void register_print(__m256 reg) {
+    float values[8];
 
+    // 将寄存器中的值存储到数组中
+    _mm256_storeu_ps(values, reg);
+
+    // 输出数组中的值
+    for (int i = 0; i < 8; ++i) {
+        std::cout << "values[" << i << "] = " << values[i] << std::endl;
+    }
+}
 #define ALIGNED(x) __attribute__((aligned(x)))
 
 // reads 0 <= d < 4 floats as __m128
@@ -754,5 +765,49 @@ bf16_vec_norm_L2sqr_avx(const knowhere::bf16* x, size_t d) {
     auto res = _mm256_reduce_add_ps(msum_0);
     return res;
 }
+
+FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
+void
+fvec_L2sqr_ny_avx(float* dis, const float* x, const float* y, size_t d, size_t ny) {
+    size_t i = 0;
+    for (; i < ny; i+=4) {
+        const float* __restrict y1 = y + d * i;
+        const float* __restrict y2 = y + d * (i + 1);
+        const float* __restrict y3 = y + d * (i + 2);
+        const float* __restrict y4 = y + d * (i + 3);
+        fvec_L2sqr_batch_4_avx(x, y1, y2,y3,y4,d,dis[i],dis[i+1],dis[i+2],dis[i+3]);
+    }
+    while (i < ny) {
+        const float* __restrict y_i = y + d * i;
+        dis[i] = fvec_L2sqr_avx(x, y_i, d);
+        y += d;
+        i++;
+    }
+}
+FAISS_PRAGMA_IMPRECISE_FUNCTION_END
+
+
+size_t
+fvec_L2sqr_ny_nearest_avx(float* __restrict distances_tmp_buffer, const float* __restrict x, const float* __restrict y,
+                          size_t d, size_t ny) {
+    if (d == 4) {
+        fvec_L2sqr_ny_dim4(distances_tmp_buffer, x, y, d, ny);
+    } else {
+        fvec_L2sqr_ny_avx(distances_tmp_buffer, x, y, d, ny);   
+    }
+
+    size_t nearest_idx = 0;
+    float min_dis = HUGE_VALF;
+
+    for (size_t i = 0; i < ny; i++) {
+        if (distances_tmp_buffer[i] < min_dis) {
+            min_dis = distances_tmp_buffer[i];
+            nearest_idx = i;
+        }
+    }
+
+    return nearest_idx;
+}
+
 }  // namespace faiss
 #endif

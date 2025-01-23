@@ -74,6 +74,77 @@ _mm256_reduce_add_ps(const __m256 res) {
     const __m128 v3 = _mm_add_ps(v1, v2);
     return _mm_cvtss_f32(v3);
 }
+
+static inline
+void fvec_L2sqr_ny_dim4(float* dis, const float* x, const float* y, size_t d, size_t ny) {
+    size_t y_i = ny;
+    auto mx_t = _mm_loadu_ps(x);
+    auto mx = _mm256_set_m128(mx_t, mx_t);
+    const float* y_i_addr = y;
+    while (y_i >= 8) {
+        auto my1 = _mm256_loadu_ps(y_i_addr);
+        auto my2 = _mm256_loadu_ps(y_i_addr + 2 * d);
+        auto my3 = _mm256_loadu_ps(y_i_addr + 4 * d);
+        auto my4 = _mm256_loadu_ps(y_i_addr + 6 * d);
+        my1 = _mm256_sub_ps(my1, mx);
+        my1 = _mm256_mul_ps(my1, my1); 
+        my2 = _mm256_sub_ps(my2, mx);
+        my2 = _mm256_mul_ps(my2, my2); 
+        my3 = _mm256_sub_ps(my3, mx);
+        my3 = _mm256_mul_ps(my3, my3); 
+        my4 = _mm256_sub_ps(my4, mx);
+        my4 = _mm256_mul_ps(my4, my4); 
+        my1 = _mm256_hadd_ps(my1, my2);
+        my3 = _mm256_hadd_ps(my3, my4);
+        my1 = _mm256_hadd_ps(my1, my3);
+        my1 = _mm256_permutevar8x32_ps(my1, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+        _mm256_storeu_ps(dis + (ny - y_i), my1);
+        y_i_addr += 8 * d;
+        y_i -=8;
+    }
+    while (y_i >= 4) {
+        auto my1 = _mm256_loadu_ps(y_i_addr);
+        y_i_addr = y_i_addr + 2 * d;
+        auto my2 = _mm256_loadu_ps(y_i_addr);
+        y_i_addr = y_i_addr + 2 * d;
+        my1 = _mm256_sub_ps(my1, mx);
+        my1 = _mm256_mul_ps(my1, my1); 
+        my2 = _mm256_sub_ps(my2, mx);
+        my2 = _mm256_mul_ps(my2, my2); 
+        my1 = _mm256_hadd_ps(my1, my2);
+        my1 = _mm256_hadd_ps(my1, my1);
+         my1 = _mm256_permutevar8x32_ps(my1, _mm256_setr_epi32(0, 4, 1, 5, 2, 6, 3, 7));
+        __m128 res = _mm256_extractf128_ps(my1, 0);
+        _mm_storeu_ps(dis + (ny - y_i), res);
+        y_i -=4;
+    }
+    if (y_i >=2) {
+        auto my1 = _mm256_loadu_ps(y_i_addr);
+        y_i_addr = y_i_addr + 2 * d;
+        my1 = _mm256_sub_ps(my1, mx);
+        my1 = _mm256_mul_ps(my1, my1); 
+        __m128 high = _mm256_extractf128_ps(my1, 1);
+        __m128 low = _mm256_extractf128_ps(my1, 0);
+        __m128 sum_low = _mm_hadd_ps(low, low);
+        sum_low = _mm_hadd_ps(sum_low, sum_low);
+
+        __m128 sum_high = _mm_hadd_ps(high, high);
+        sum_high = _mm_hadd_ps(sum_high, sum_high);
+
+        dis[ny - y_i] = _mm_cvtss_f32(sum_low);
+        dis[ny - y_i + 1] = _mm_cvtss_f32(sum_high);
+        y_i -=2;
+    }
+    if (y_i >=0) {
+        float dis1, dis2;
+        dis1 = (x[0] - y_i_addr[0]) * (x[0] - y_i_addr[0]);
+        dis2 = (x[1] - y_i_addr[1]) * (x[1] - y_i_addr[1]);
+        dis1 += (x[2] - y_i_addr[2]) * (x[2] - y_i_addr[2]);
+        dis2 += (x[3] - y_i_addr[3]) * (x[3] - y_i_addr[3]);
+        dis[ny - y_i] = dis1 + dis2;
+    }
+}
+
 #endif
 
 #if defined(__ARM_NEON)

@@ -127,6 +127,8 @@ void IndexIVFPQFastScan::train_encoder(
         const idx_t* assign) {
     pq.verbose = verbose;
     pq.train(n, x);
+    pq.sync_transposed_centroids();
+
 
     if (by_residual && metric_type == METRIC_L2) {
         precompute_table();
