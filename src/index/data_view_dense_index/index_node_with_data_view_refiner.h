@@ -275,7 +275,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
 };
 
 namespace {
-constexpr int64_t kBatchSize = 4096;
+constexpr int64_t kBatchSize = 10000000;
 constexpr int64_t kMaxTrainSize = 5000;
 constexpr int64_t kRandomSeed = 1234;
 constexpr const char* kIndexNodeSuffixWithDataViewRefiner = "_DVR";  // short express of Data View Refine
