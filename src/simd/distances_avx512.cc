@@ -51,7 +51,6 @@ static inline size_t select_min_value(float* __restrict distances_tmp_buffer, si
    return nearest_idx;
 }
 
-
 static inline size_t select_max_value(float* __restrict distances_tmp_buffer, size_t ny) {
 //     size_t gt_idx = 0;
 //     float gt_dis = -HUGE_VALF;

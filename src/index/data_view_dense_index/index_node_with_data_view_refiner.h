@@ -99,7 +99,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
         if (!this->base_index_) {
             return expected<DataSetPtr>::Err(Status::empty_index, "Data View Index not maintain raw data.");
         }
-         FairReadLockGuard guard(*this->base_index_lock_);
+        FairReadLockGuard guard(*this->base_index_lock_);
         auto meta = this->base_index_->GetIndexMeta(std::move(cfg));
         return meta;
     }
@@ -275,63 +275,9 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
 };
 
 namespace {
-constexpr int64_t kBatchSize = 10000000;
-constexpr int64_t kMaxTrainSize = 5000;
+constexpr int64_t kBatchSize = 4096;
 constexpr int64_t kRandomSeed = 1234;
 constexpr const char* kIndexNodeSuffixWithDataViewRefiner = "_DVR";  // short express of Data View Refine
-
-template <typename DataType>
-inline DataSetPtr
-GenBaseIndexFp32TrainDataSet(const DataSetPtr& src, bool is_cosine = false,
-                             std::optional<size_t> filling_dim = std::nullopt) {
-    DataSetPtr train_ds;
-    auto rows = src->GetRows();
-    bool cosine_need_copy = false;
-    size_t src_dim = src->GetDim();
-    size_t des_dim = filling_dim.value_or(src_dim);
-    assert(src_dim <= des_dim);
-
-    if (rows <= kMaxTrainSize && des_dim == src_dim) {
-        train_ds = ConvertFromDataTypeIfNeeded<DataType>(src);
-        if constexpr (std::is_same_v<DataType, fp32>) {
-            cosine_need_copy = true;
-        }
-    } else {
-        auto train_rows = std::min(rows, kMaxTrainSize);
-        std::vector<int> random_ids(rows);
-        faiss::rand_perm(random_ids.data(), rows, kRandomSeed);
-
-        const DataType* src_data = (const DataType*)src->GetTensor();
-        auto* des_data = new float[des_dim * train_rows];
-        std::memset(des_data, 0, sizeof(float) * des_dim * train_rows);
-        for (auto i = 0; i < train_rows; i++) {
-            auto from_id = random_ids[i];
-            auto to_id = i;
-            if constexpr (std::is_same_v<DataType, knowhere::fp32>) {
-                std::memcpy(des_data + to_id * des_dim, src_data + from_id * src_dim, sizeof(float) * src_dim);
-            } else {
-                for (size_t d = 0; d < src_dim; d++) {
-                    // todo: optimize it with simd
-                    des_data[to_id * des_dim + d] = (fp32)src_data[from_id * src_dim + d];
-                }
-            }
-        }
-        auto des = std::make_shared<DataSet>();
-        des->SetRows(train_rows);
-        des->SetDim(des_dim);
-        des->SetTensor(des_data);
-        des->SetIsOwner(true);
-        train_ds = des;
-    }
-    if (is_cosine) {
-        if (cosine_need_copy) {
-            train_ds = std::get<0>(CopyAndNormalizeDataset<fp32>(train_ds));
-        } else {
-            NormalizeDataset<fp32>(train_ds);
-        }
-    }
-    return train_ds;
-}
 
 template <typename DataType>
 inline std::tuple<DataSetPtr, std::vector<float>>
@@ -361,7 +307,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Train(const DataSetPtr da
     BaseConfig& base_cfg = static_cast<BaseConfig&>(*cfg);
     this->is_cosine_ = IsMetricType(base_cfg.metric_type.value(), knowhere::metric::COSINE);
     auto dim = dataset->GetDim();
-
+    auto train_rows = dataset->GetRows();
     // construct refiner
     auto refine_metric = is_cosine_ ? metric::IP : base_cfg.metric_type.value();
     refine_offset_index_ =
@@ -371,7 +317,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Train(const DataSetPtr da
     auto base_index_dim = dynamic_cast<BaseConfig*>(cfg.get())->dim.value();
 
     LOG_KNOWHERE_DEBUG_ << "Generate Base Index with dim: " << base_index_dim << std::endl;
-    auto fp32_train_ds = GenBaseIndexFp32TrainDataSet<DataType>(dataset, this->is_cosine_, base_index_dim);
+    auto [fp32_train_ds, _] = ConvertToBaseIndexFp32DataSet<DataType>(dataset, this->is_cosine_, 0, train_rows, base_index_dim);
     return base_index_->Train(
         fp32_train_ds,
         cfg);  // train not need base_index_lock_, all add and search will fail if train not called before
