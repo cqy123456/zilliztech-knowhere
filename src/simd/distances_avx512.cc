@@ -766,7 +766,7 @@ fvec_norm_L2sqr_avx512(const float* x, size_t d) {
         x += 16;
         d -= 16;
     }
-    if (d >= 0) {
+    if (d > 0) {
         const __mmask16 mask = (1U << d) - 1U;
         auto mx = _mm512_maskz_loadu_ps(mask, x);
         m512_res = _mm512_fmadd_ps(mx, mx, m512_res);

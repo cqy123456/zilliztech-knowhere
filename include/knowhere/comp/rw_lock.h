@@ -19,57 +19,55 @@ FairRWLock is a fair MultiRead-SingleWrite lock
 namespace knowhere {
 class FairRWLock {
 public:
-    FairRWLock() : id_counter_(0), readers(0), writer(false) {}
+    FairRWLock() = default;
 
     void LockRead() {
-        std::unique_lock<std::mutex> lk(mtx);
+        std::unique_lock<std::mutex> lk(mtx_);
         auto id = id_counter_++;
 
-        read_cv.wait(lk, [this, id]() {
-            return !writer && (write_requests.empty() || write_requests.front() > id);
+        read_cv_.wait(lk, [this, id]() {
+            return !writer_ && (write_requests_.empty() || write_requests_.front() > id);
         });
-
-        ++readers;
+        ++readers_;
     }
 
     void UnLockRead() {
-        std::unique_lock<std::mutex> lk(mtx);
-        if (--readers == 0 && !write_requests.empty()) {
-            write_cv.notify_one();
+        std::unique_lock<std::mutex> lk(mtx_);
+        if (--readers_ == 0 && !write_requests_.empty()) {
+            write_cv_.notify_one();
         }
     }
 
     void LockWrite() {
-        std::unique_lock<std::mutex> lk(mtx);
+        std::unique_lock<std::mutex> lk(mtx_);
         auto id =  id_counter_++;
-        write_requests.push(id);
+        write_requests_.push(id);
 
-        write_cv.wait(lk, [this, id]() {
-            return !writer && readers == 0 && write_requests.front() == id;
+        write_cv_.wait(lk, [this, id]() {
+            return !writer_ && readers_ == 0 && write_requests_.front() == id;
         });
-
-        write_requests.pop();
-        writer = true;
+        writer_ = true;
     }
 
     void UnLockWrite() {
-        std::unique_lock<std::mutex> lk(mtx);
-        writer = false;
-        if (!write_requests.empty()) {
-            write_cv.notify_one();
+        std::unique_lock<std::mutex> lk(mtx_);
+        writer_ = false;
+        write_requests_.pop();
+        if (!write_requests_.empty()) {
+            write_cv_.notify_one();
         } else {
-            read_cv.notify_all();
+            read_cv_.notify_all();
         }
     }
 
 private:
     uint64_t id_counter_ = 0;
-    std::mutex mtx;
-    std::condition_variable read_cv;
-    std::condition_variable write_cv;
-    int readers;
-    bool writer;
-    std::queue<uint64_t> write_requests;
+    std::mutex mtx_;
+    std::condition_variable read_cv_;
+    std::condition_variable write_cv_;
+    uint64_t readers_ = 0;
+    bool writer_ = false;
+    std::queue<uint64_t> write_requests_;
 };
 
 class FairReadLockGuard {

@@ -99,7 +99,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
         if (!this->base_index_) {
             return expected<DataSetPtr>::Err(Status::empty_index, "Data View Index not maintain raw data.");
         }
-        FairReadLockGuard(*this->base_index_lock_);
+         FairReadLockGuard guard(*this->base_index_lock_);
         auto meta = this->base_index_->GetIndexMeta(std::move(cfg));
         return meta;
     }
@@ -152,7 +152,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     int64_t
     Size() const override {
         if (this->base_index_) {
-            FairReadLockGuard(*this->base_index_lock_);
+             FairReadLockGuard guard(*this->base_index_lock_);
             auto size = this->base_index_->Size();
             return size;
         }
@@ -162,7 +162,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     int64_t
     Count() const override {
         if (this->base_index_) {
-            FairReadLockGuard(*this->base_index_lock_);
+             FairReadLockGuard guard(*this->base_index_lock_);
             auto count = this->base_index_->Count();
             return count;
         }
@@ -389,7 +389,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Add(const DataSetPtr data
         auto [base_ds, norms] =
             ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, blk_i, blk_size, base_index_->Dim());
         {
-            FairWriteLockGuard(*this->base_index_lock_);
+             FairWriteLockGuard guard(*this->base_index_lock_);
             add_stat = base_index_->Add(base_ds, cfg);
         }
         try {
@@ -424,7 +424,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Search(const DataSetPtr d
         ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, std::nullopt, std::nullopt, base_index_->Dim()));
     knowhere::expected<knowhere::DataSetPtr> quant_res;
     {
-        FairReadLockGuard(*this->base_index_lock_);
+         FairReadLockGuard guard(*this->base_index_lock_);
         quant_res = base_index_->Search(base_index_ds, std::move(cfg), bitset);
     }
     if (!quant_res.has_value()) {
@@ -469,7 +469,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::RangeSearch(const DataSet
 
     knowhere::expected<knowhere::DataSetPtr> quant_res;
     {
-        FairReadLockGuard(*this->base_index_lock_);
+         FairReadLockGuard guard(*this->base_index_lock_);
         quant_res = base_index_->RangeSearch(base_index_ds, std::move(cfg), bitset);
     }
     if (!quant_res.has_value()) {
@@ -510,7 +510,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::AnnIterator(const DataSet
         ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, std::nullopt, std::nullopt, base_index_->Dim()));
     knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>> base_index_init;
     {
-        FairReadLockGuard(*this->base_index_lock_);
+         FairReadLockGuard guard(*this->base_index_lock_);
         base_index_init = base_index_->AnnIterator(base_index_ds, std::move(cfg), bitset, use_knowhere_search_pool);
     }
     if (!base_index_init.has_value()) {
