@@ -18,7 +18,7 @@
 #include <cstdint>
 
 #include "distances_ref.h"
-#include "simd_util.h"
+#include "utils_sse.h"
 
 namespace faiss {
 

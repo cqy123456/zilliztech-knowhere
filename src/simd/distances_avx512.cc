@@ -19,10 +19,12 @@
 #include <string>
 
 #include "faiss/impl/platform_macros.h"
-#include "simd_util.h"
+#include "utils_avx.h"
+#include "utils_avx512.h"
+#include "utils_sse.h"
 
 namespace faiss {
-
+namespace {
 // reads 0 <= d < 4 floats as __m128
 static inline __m128
 masked_read(int d, const float* x) {
@@ -39,6 +41,800 @@ masked_read(int d, const float* x) {
     return _mm_load_ps(buf);
     // cannot use AVX2 _mm_mask_set1_epi32
 }
+
+/// Function that does a component-wise operation between x and y
+/// to compute L2 distances. ElementOp can then be used in the fvec_op_ny
+/// functions below
+struct ElementOpL2 {
+    static float
+    op(float x, float y) {
+        float tmp = x - y;
+        return tmp * tmp;
+    }
+
+    static __m128
+    op(__m128 x, __m128 y) {
+        __m128 tmp = _mm_sub_ps(x, y);
+        return _mm_mul_ps(tmp, tmp);
+    }
+
+    static __m256
+    op(__m256 x, __m256 y) {
+        __m256 tmp = _mm256_sub_ps(x, y);
+        return _mm256_mul_ps(tmp, tmp);
+    }
+
+    static __m512
+    op(__m512 x, __m512 y) {
+        __m512 tmp = _mm512_sub_ps(x, y);
+        return _mm512_mul_ps(tmp, tmp);
+    }
+};
+
+/// Function that does a component-wise operation between x and y
+/// to compute inner products
+struct ElementOpIP {
+    static float
+    op(float x, float y) {
+        return x * y;
+    }
+
+    static __m128
+    op(__m128 x, __m128 y) {
+        return _mm_mul_ps(x, y);
+    }
+
+    static __m256
+    op(__m256 x, __m256 y) {
+        return _mm256_mul_ps(x, y);
+    }
+
+    static __m512
+    op(__m512 x, __m512 y) {
+        return _mm512_mul_ps(x, y);
+    }
+};
+
+template <class ElementOp>
+void
+fvec_op_ny_D1(float* dis, const float* x, const float* y, size_t ny) {
+    float x0s = x[0];
+    __m128 x0 = _mm_set_ps(x0s, x0s, x0s, x0s);
+
+    size_t i;
+    for (i = 0; i + 3 < ny; i += 4) {
+        __m128 accu = ElementOp::op(x0, _mm_loadu_ps(y));
+        y += 4;
+        dis[i] = _mm_cvtss_f32(accu);
+        __m128 tmp = _mm_shuffle_ps(accu, accu, 1);
+        dis[i + 1] = _mm_cvtss_f32(tmp);
+        tmp = _mm_shuffle_ps(accu, accu, 2);
+        dis[i + 2] = _mm_cvtss_f32(tmp);
+        tmp = _mm_shuffle_ps(accu, accu, 3);
+        dis[i + 3] = _mm_cvtss_f32(tmp);
+    }
+    while (i < ny) {  // handle non-multiple-of-4 case
+        dis[i++] = ElementOp::op(x0s, *y++);
+    }
+}
+
+template <class ElementOp>
+void
+fvec_op_ny_D2(float* dis, const float* x, const float* y, size_t ny) {
+    auto x0 = _mm512_set4_ps(x[1], x[0], x[1], x[0]);
+    size_t i;
+    for (i = 0; i + 15 < ny; i += 8) {
+        auto accu = ElementOp::op(x0, _mm512_loadu_ps(y));
+        y += 16;
+        auto low = _mm512_extractf32x8_ps(accu, 0);
+        auto high = _mm512_extractf32x8_ps(accu, 1);
+        auto res = _mm256_hadd_ps(low, high);
+        res = _mm256_permutevar8x32_ps(res, _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7));
+        _mm256_storeu_ps(dis + i, res);
+    }
+    if (i < ny) {  // handle odd case
+        dis[i] = ElementOp::op(x[0], y[0]) + ElementOp::op(x[1], y[1]);
+    }
+}
+
+template <>
+void
+fvec_op_ny_D2<ElementOpIP>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D2-vectors per loop.
+        _mm_prefetch((const char*)y, _MM_HINT_T0);
+        _mm_prefetch((const char*)(y + 32), _MM_HINT_T0);
+
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            _mm_prefetch((const char*)(y + 64), _MM_HINT_T0);
+
+            // load 16x2 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+
+            transpose_16x2(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), v0, v1);
+
+            // compute distances (dot product)
+            __m512 distances = _mm512_mul_ps(m0, v0);
+            distances = _mm512_fmadd_ps(m1, v1, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 32;  // move to the next set of 16x2 elements
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        float x0 = x[0];
+        float x1 = x[1];
+
+        for (; i < ny; i++) {
+            float distance = x0 * y[0] + x1 * y[1];
+            y += 2;
+            dis[i] = distance;
+        }
+    }
+}
+
+template <>
+void
+fvec_op_ny_D2<ElementOpL2>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D2-vectors per loop.
+        _mm_prefetch((const char*)y, _MM_HINT_T0);
+        _mm_prefetch((const char*)(y + 32), _MM_HINT_T0);
+
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            _mm_prefetch((const char*)(y + 64), _MM_HINT_T0);
+
+            // load 16x2 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+
+            transpose_16x2(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), v0, v1);
+
+            // compute differences
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+
+            // compute squares of differences
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 32;  // move to the next set of 16x2 elements
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        float x0 = x[0];
+        float x1 = x[1];
+
+        for (; i < ny; i++) {
+            float sub0 = x0 - y[0];
+            float sub1 = x1 - y[1];
+            float distance = sub0 * sub0 + sub1 * sub1;
+
+            y += 2;
+            dis[i] = distance;
+        }
+    }
+}
+
+template <class ElementOp>
+void
+fvec_op_ny_D4(float* dis, const float* x, const float* y, size_t ny) {
+    __m128 x0 = _mm_loadu_ps(x);
+
+    for (size_t i = 0; i < ny; i++) {
+        __m128 accu = ElementOp::op(x0, _mm_loadu_ps(y));
+        y += 4;
+        dis[i] = horizontal_sum(accu);
+    }
+}
+
+template <>
+void
+fvec_op_ny_D4<ElementOpIP>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D4-vectors per loop.
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            // load 16x4 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+
+            transpose_16x4(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), v0, v1, v2, v3);
+
+            // compute distances
+            __m512 distances = _mm512_mul_ps(m0, v0);
+            distances = _mm512_fmadd_ps(m1, v1, distances);
+            distances = _mm512_fmadd_ps(m2, v2, distances);
+            distances = _mm512_fmadd_ps(m3, v3, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 64;  // move to the next set of 16x4 elements
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        __m128 x0 = _mm_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m128 accu = ElementOpIP::op(x0, _mm_loadu_ps(y));
+            y += 4;
+            dis[i] = horizontal_sum(accu);
+        }
+    }
+}
+
+template <>
+void
+fvec_op_ny_D4<ElementOpL2>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D4-vectors per loop.
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            // load 16x4 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+
+            transpose_16x4(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), v0, v1, v2, v3);
+
+            // compute differences
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+            const __m512 d2 = _mm512_sub_ps(m2, v2);
+            const __m512 d3 = _mm512_sub_ps(m3, v3);
+
+            // compute squares of differences
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+            distances = _mm512_fmadd_ps(d2, d2, distances);
+            distances = _mm512_fmadd_ps(d3, d3, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 64;  // move to the next set of 16x4 elements
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        __m128 x0 = _mm_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m128 accu = ElementOpL2::op(x0, _mm_loadu_ps(y));
+            y += 4;
+            dis[i] = horizontal_sum(accu);
+        }
+    }
+}
+
+template <class ElementOp>
+void
+fvec_op_ny_D8(float* dis, const float* x, const float* y, size_t ny) {
+    __m128 x0 = _mm_loadu_ps(x);
+    __m128 x1 = _mm_loadu_ps(x + 4);
+
+    for (size_t i = 0; i < ny; i++) {
+        __m128 accu = ElementOp::op(x0, _mm_loadu_ps(y));
+        y += 4;
+        accu = _mm_add_ps(accu, ElementOp::op(x1, _mm_loadu_ps(y)));
+        y += 4;
+        accu = _mm_hadd_ps(accu, accu);
+        accu = _mm_hadd_ps(accu, accu);
+        dis[i] = _mm_cvtss_f32(accu);
+    }
+}
+
+template <>
+void
+fvec_op_ny_D8<ElementOpIP>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D16-vectors per loop.
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+        const __m512 m4 = _mm512_set1_ps(x[4]);
+        const __m512 m5 = _mm512_set1_ps(x[5]);
+        const __m512 m6 = _mm512_set1_ps(x[6]);
+        const __m512 m7 = _mm512_set1_ps(x[7]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            // load 16x8 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+            __m512 v4;
+            __m512 v5;
+            __m512 v6;
+            __m512 v7;
+
+            transpose_16x8(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), _mm512_loadu_ps(y + 4 * 16), _mm512_loadu_ps(y + 5 * 16),
+                           _mm512_loadu_ps(y + 6 * 16), _mm512_loadu_ps(y + 7 * 16), v0, v1, v2, v3, v4, v5, v6, v7);
+
+            // compute distances
+            __m512 distances = _mm512_mul_ps(m0, v0);
+            distances = _mm512_fmadd_ps(m1, v1, distances);
+            distances = _mm512_fmadd_ps(m2, v2, distances);
+            distances = _mm512_fmadd_ps(m3, v3, distances);
+            distances = _mm512_fmadd_ps(m4, v4, distances);
+            distances = _mm512_fmadd_ps(m5, v5, distances);
+            distances = _mm512_fmadd_ps(m6, v6, distances);
+            distances = _mm512_fmadd_ps(m7, v7, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 128;  // 16 floats * 8 rows
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        __m256 x0 = _mm256_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m256 accu = ElementOpIP::op(x0, _mm256_loadu_ps(y));
+            y += 8;
+            dis[i] = horizontal_sum(accu);
+        }
+    }
+}
+
+template <>
+void
+fvec_op_ny_D8<ElementOpL2>(float* dis, const float* x, const float* y, size_t ny) {
+    const size_t ny16 = ny / 16;
+    size_t i = 0;
+
+    if (ny16 > 0) {
+        // process 16 D16-vectors per loop.
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+        const __m512 m4 = _mm512_set1_ps(x[4]);
+        const __m512 m5 = _mm512_set1_ps(x[5]);
+        const __m512 m6 = _mm512_set1_ps(x[6]);
+        const __m512 m7 = _mm512_set1_ps(x[7]);
+
+        for (i = 0; i < ny16 * 16; i += 16) {
+            // load 16x8 matrix and transpose it in registers.
+            // the typical bottleneck is memory access, so
+            // let's trade instructions for the bandwidth.
+
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+            __m512 v4;
+            __m512 v5;
+            __m512 v6;
+            __m512 v7;
+
+            transpose_16x8(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), _mm512_loadu_ps(y + 4 * 16), _mm512_loadu_ps(y + 5 * 16),
+                           _mm512_loadu_ps(y + 6 * 16), _mm512_loadu_ps(y + 7 * 16), v0, v1, v2, v3, v4, v5, v6, v7);
+
+            // compute differences
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+            const __m512 d2 = _mm512_sub_ps(m2, v2);
+            const __m512 d3 = _mm512_sub_ps(m3, v3);
+            const __m512 d4 = _mm512_sub_ps(m4, v4);
+            const __m512 d5 = _mm512_sub_ps(m5, v5);
+            const __m512 d6 = _mm512_sub_ps(m6, v6);
+            const __m512 d7 = _mm512_sub_ps(m7, v7);
+
+            // compute squares of differences
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+            distances = _mm512_fmadd_ps(d2, d2, distances);
+            distances = _mm512_fmadd_ps(d3, d3, distances);
+            distances = _mm512_fmadd_ps(d4, d4, distances);
+            distances = _mm512_fmadd_ps(d5, d5, distances);
+            distances = _mm512_fmadd_ps(d6, d6, distances);
+            distances = _mm512_fmadd_ps(d7, d7, distances);
+
+            // store
+            _mm512_storeu_ps(dis + i, distances);
+
+            y += 128;  // 16 floats * 8 rows
+        }
+    }
+
+    if (i < ny) {
+        // process leftovers
+        __m256 x0 = _mm256_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m256 accu = ElementOpL2::op(x0, _mm256_loadu_ps(y));
+            y += 8;
+            dis[i] = horizontal_sum(accu);
+        }
+    }
+}
+
+template <class ElementOp>
+void
+fvec_op_ny_D12(float* dis, const float* x, const float* y, size_t ny) {
+    __m128 x0 = _mm_loadu_ps(x);
+    __m128 x1 = _mm_loadu_ps(x + 4);
+    __m128 x2 = _mm_loadu_ps(x + 8);
+
+    for (size_t i = 0; i < ny; i++) {
+        __m128 accu = ElementOp::op(x0, _mm_loadu_ps(y));
+        y += 4;
+        accu = _mm_add_ps(accu, ElementOp::op(x1, _mm_loadu_ps(y)));
+        y += 4;
+        accu = _mm_add_ps(accu, ElementOp::op(x2, _mm_loadu_ps(y)));
+        y += 4;
+        dis[i] = horizontal_sum(accu);
+    }
+}
+
+FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
+inline void
+fvec_L2sqr_ny_avx512_impl(float* dis, const float* x, const float* y, size_t d, size_t ny) {
+    size_t i = 0;
+    for (; i < ny; i += 4) {
+        const float* __restrict y1 = y + d * i;
+        const float* __restrict y2 = y + d * (i + 1);
+        const float* __restrict y3 = y + d * (i + 2);
+        const float* __restrict y4 = y + d * (i + 3);
+        fvec_L2sqr_batch_4_avx512(x, y1, y2, y3, y4, d, dis[i], dis[i + 1], dis[i + 2], dis[i + 3]);
+    }
+    while (i < ny) {
+        const float* __restrict y_i = y + d * i;
+        dis[i] = fvec_L2sqr_avx512(x, y_i, d);
+        y += d;
+        i++;
+    }
+}
+FAISS_PRAGMA_IMPRECISE_FUNCTION_END
+
+size_t
+fvec_L2sqr_ny_nearest_D2(float* distances_tmp_buffer, const float* x, const float* y, size_t ny) {
+    // this implementation does not use distances_tmp_buffer.
+
+    size_t i = 0;
+    float current_min_distance = HUGE_VALF;
+    size_t current_min_index = 0;
+
+    const size_t ny16 = ny / 16;
+    if (ny16 > 0) {
+        _mm_prefetch((const char*)y, _MM_HINT_T0);
+        _mm_prefetch((const char*)(y + 32), _MM_HINT_T0);
+
+        __m512 min_distances = _mm512_set1_ps(HUGE_VALF);
+        __m512i min_indices = _mm512_set1_epi32(0);
+
+        __m512i current_indices = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        const __m512i indices_increment = _mm512_set1_epi32(16);
+
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+
+        for (; i < ny16 * 16; i += 16) {
+            _mm_prefetch((const char*)(y + 64), _MM_HINT_T0);
+
+            __m512 v0;
+            __m512 v1;
+
+            transpose_16x2(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), v0, v1);
+
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+
+            __mmask16 comparison = _mm512_cmp_ps_mask(distances, min_distances, _CMP_LT_OS);
+
+            min_distances = _mm512_min_ps(distances, min_distances);
+            min_indices = _mm512_mask_blend_epi32(comparison, min_indices, current_indices);
+
+            current_indices = _mm512_add_epi32(current_indices, indices_increment);
+
+            y += 32;
+        }
+
+        alignas(64) float min_distances_scalar[16];
+        alignas(64) uint32_t min_indices_scalar[16];
+        _mm512_store_ps(min_distances_scalar, min_distances);
+        _mm512_store_epi32(min_indices_scalar, min_indices);
+
+        for (size_t j = 0; j < 16; j++) {
+            if (current_min_distance > min_distances_scalar[j]) {
+                current_min_distance = min_distances_scalar[j];
+                current_min_index = min_indices_scalar[j];
+            }
+        }
+    }
+
+    if (i < ny) {
+        float x0 = x[0];
+        float x1 = x[1];
+
+        for (; i < ny; i++) {
+            float sub0 = x0 - y[0];
+            float sub1 = x1 - y[1];
+            float distance = sub0 * sub0 + sub1 * sub1;
+
+            y += 2;
+
+            if (current_min_distance > distance) {
+                current_min_distance = distance;
+                current_min_index = i;
+            }
+        }
+    }
+
+    return current_min_index;
+}
+size_t
+fvec_L2sqr_ny_nearest_D4(float* distances_tmp_buffer, const float* x, const float* y, size_t ny) {
+    // this implementation does not use distances_tmp_buffer.
+
+    size_t i = 0;
+    float current_min_distance = HUGE_VALF;
+    size_t current_min_index = 0;
+
+    const size_t ny16 = ny / 16;
+
+    if (ny16 > 0) {
+        __m512 min_distances = _mm512_set1_ps(HUGE_VALF);
+        __m512i min_indices = _mm512_set1_epi32(0);
+
+        __m512i current_indices = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        const __m512i indices_increment = _mm512_set1_epi32(16);
+
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+
+        for (; i < ny16 * 16; i += 16) {
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+
+            transpose_16x4(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), v0, v1, v2, v3);
+
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+            const __m512 d2 = _mm512_sub_ps(m2, v2);
+            const __m512 d3 = _mm512_sub_ps(m3, v3);
+
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+            distances = _mm512_fmadd_ps(d2, d2, distances);
+            distances = _mm512_fmadd_ps(d3, d3, distances);
+
+            __mmask16 comparison = _mm512_cmp_ps_mask(distances, min_distances, _CMP_LT_OS);
+
+            min_distances = _mm512_min_ps(distances, min_distances);
+            min_indices = _mm512_mask_blend_epi32(comparison, min_indices, current_indices);
+
+            current_indices = _mm512_add_epi32(current_indices, indices_increment);
+
+            y += 64;
+        }
+
+        alignas(64) float min_distances_scalar[16];
+        alignas(64) uint32_t min_indices_scalar[16];
+        _mm512_store_ps(min_distances_scalar, min_distances);
+        _mm512_store_epi32(min_indices_scalar, min_indices);
+
+        for (size_t j = 0; j < 16; j++) {
+            if (current_min_distance > min_distances_scalar[j]) {
+                current_min_distance = min_distances_scalar[j];
+                current_min_index = min_indices_scalar[j];
+            }
+        }
+    }
+
+    if (i < ny) {
+        __m128 x0 = _mm_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m128 accu = ElementOpL2::op(x0, _mm_loadu_ps(y));
+            y += 4;
+            const float distance = horizontal_sum(accu);
+
+            if (current_min_distance > distance) {
+                current_min_distance = distance;
+                current_min_index = i;
+            }
+        }
+    }
+
+    return current_min_index;
+}
+
+size_t
+fvec_L2sqr_ny_nearest_D8(float* distances_tmp_buffer, const float* x, const float* y, size_t ny) {
+    // this implementation does not use distances_tmp_buffer.
+
+    size_t i = 0;
+    float current_min_distance = HUGE_VALF;
+    size_t current_min_index = 0;
+
+    const size_t ny16 = ny / 16;
+    if (ny16 > 0) {
+        __m512 min_distances = _mm512_set1_ps(HUGE_VALF);
+        __m512i min_indices = _mm512_set1_epi32(0);
+
+        __m512i current_indices = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        const __m512i indices_increment = _mm512_set1_epi32(16);
+
+        const __m512 m0 = _mm512_set1_ps(x[0]);
+        const __m512 m1 = _mm512_set1_ps(x[1]);
+        const __m512 m2 = _mm512_set1_ps(x[2]);
+        const __m512 m3 = _mm512_set1_ps(x[3]);
+
+        const __m512 m4 = _mm512_set1_ps(x[4]);
+        const __m512 m5 = _mm512_set1_ps(x[5]);
+        const __m512 m6 = _mm512_set1_ps(x[6]);
+        const __m512 m7 = _mm512_set1_ps(x[7]);
+
+        for (; i < ny16 * 16; i += 16) {
+            __m512 v0;
+            __m512 v1;
+            __m512 v2;
+            __m512 v3;
+            __m512 v4;
+            __m512 v5;
+            __m512 v6;
+            __m512 v7;
+
+            transpose_16x8(_mm512_loadu_ps(y + 0 * 16), _mm512_loadu_ps(y + 1 * 16), _mm512_loadu_ps(y + 2 * 16),
+                           _mm512_loadu_ps(y + 3 * 16), _mm512_loadu_ps(y + 4 * 16), _mm512_loadu_ps(y + 5 * 16),
+                           _mm512_loadu_ps(y + 6 * 16), _mm512_loadu_ps(y + 7 * 16), v0, v1, v2, v3, v4, v5, v6, v7);
+
+            const __m512 d0 = _mm512_sub_ps(m0, v0);
+            const __m512 d1 = _mm512_sub_ps(m1, v1);
+            const __m512 d2 = _mm512_sub_ps(m2, v2);
+            const __m512 d3 = _mm512_sub_ps(m3, v3);
+            const __m512 d4 = _mm512_sub_ps(m4, v4);
+            const __m512 d5 = _mm512_sub_ps(m5, v5);
+            const __m512 d6 = _mm512_sub_ps(m6, v6);
+            const __m512 d7 = _mm512_sub_ps(m7, v7);
+
+            __m512 distances = _mm512_mul_ps(d0, d0);
+            distances = _mm512_fmadd_ps(d1, d1, distances);
+            distances = _mm512_fmadd_ps(d2, d2, distances);
+            distances = _mm512_fmadd_ps(d3, d3, distances);
+            distances = _mm512_fmadd_ps(d4, d4, distances);
+            distances = _mm512_fmadd_ps(d5, d5, distances);
+            distances = _mm512_fmadd_ps(d6, d6, distances);
+            distances = _mm512_fmadd_ps(d7, d7, distances);
+
+            __mmask16 comparison = _mm512_cmp_ps_mask(distances, min_distances, _CMP_LT_OS);
+
+            min_distances = _mm512_min_ps(distances, min_distances);
+            min_indices = _mm512_mask_blend_epi32(comparison, min_indices, current_indices);
+
+            current_indices = _mm512_add_epi32(current_indices, indices_increment);
+
+            y += 128;
+        }
+
+        alignas(64) float min_distances_scalar[16];
+        alignas(64) uint32_t min_indices_scalar[16];
+        _mm512_store_ps(min_distances_scalar, min_distances);
+        _mm512_store_epi32(min_indices_scalar, min_indices);
+
+        for (size_t j = 0; j < 16; j++) {
+            if (current_min_distance > min_distances_scalar[j]) {
+                current_min_distance = min_distances_scalar[j];
+                current_min_index = min_indices_scalar[j];
+            }
+        }
+    }
+
+    if (i < ny) {
+        __m256 x0 = _mm256_loadu_ps(x);
+
+        for (; i < ny; i++) {
+            __m256 accu = ElementOpL2::op(x0, _mm256_loadu_ps(y));
+            y += 8;
+            const float distance = horizontal_sum(accu);
+
+            if (current_min_distance > distance) {
+                current_min_distance = distance;
+                current_min_index = i;
+            }
+        }
+    }
+
+    return current_min_index;
+}
+
+size_t
+fvec_L2sqr_ny_nearest_avx512_impl(float* distances_tmp_buffer, const float* x, const float* y, size_t d, size_t ny) {
+    fvec_L2sqr_ny_avx512(distances_tmp_buffer, x, y, d, ny);
+
+    size_t nearest_idx = 0;
+    float min_dis = HUGE_VALF;
+
+    for (size_t i = 0; i < ny; i++) {
+        if (distances_tmp_buffer[i] < min_dis) {
+            min_dis = distances_tmp_buffer[i];
+            nearest_idx = i;
+        }
+    }
+
+    return nearest_idx;
+}
+
+}  // namespace
 
 // trust the compiler to unroll this properly
 FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
@@ -759,6 +1555,44 @@ bf16_vec_norm_L2sqr_avx512(const knowhere::bf16* x, size_t d) {
         m512_res = _mm512_fmadd_ps(mx, mx, m512_res);
     }
     return _mm512_reduce_add_ps(m512_res);
+}
+
+void
+fvec_L2sqr_ny_avx512(float* dis, const float* x, const float* y, size_t d, size_t ny) {
+    // optimized for a few special cases
+
+#define DISPATCH(dval)                                  \
+    case dval:                                          \
+        fvec_op_ny_D##dval<ElementOpL2>(dis, x, y, ny); \
+        return;
+
+    switch (d) {
+        DISPATCH(1)
+        DISPATCH(2)
+        DISPATCH(4)
+        DISPATCH(8)
+        default:
+            fvec_L2sqr_ny_avx512_impl(dis, x, y, d, ny);
+            return;
+    }
+#undef DISPATCH
+}
+
+size_t
+fvec_L2sqr_ny_nearest_avx512(float* distances_tmp_buffer, const float* x, const float* y, size_t d, size_t ny) {
+// optimized for a few special cases
+#define DISPATCH(dval) \
+    case dval:         \
+        return fvec_L2sqr_ny_nearest_D##dval(distances_tmp_buffer, x, y, ny);
+
+    switch (d) {
+        DISPATCH(2)
+        DISPATCH(4)
+        DISPATCH(8)
+        default:
+            return fvec_L2sqr_ny_nearest_avx512_impl(distances_tmp_buffer, x, y, d, ny);
+    }
+#undef DISPATCH
 }
 
 }  // namespace faiss

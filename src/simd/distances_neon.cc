@@ -15,7 +15,7 @@
 #include <arm_neon.h>
 #include <math.h>
 
-#include "simd_util.h"
+#include "utils_neon.h"
 namespace faiss {
 
 // The main goal is to reduce the original precision of floats to maintain consistency with the distance result
