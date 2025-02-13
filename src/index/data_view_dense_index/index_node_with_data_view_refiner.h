@@ -39,7 +39,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
         assert(data_view_index_pack != nullptr);
         view_data_op_ = data_view_index_pack->GetPack();
         base_index_ = std::make_unique<BaseIndexNode>(version, nullptr);
-        base_index_lock_ = std::make_unique<FairRWLock>();
+        //base_index_lock_ = std::make_unique<FairRWLock>();
     }
 
     Status
@@ -99,7 +99,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
         if (!this->base_index_) {
             return expected<DataSetPtr>::Err(Status::empty_index, "Data View Index not maintain raw data.");
         }
-        FairReadLockGuard guard(*this->base_index_lock_);
+        std::shared_lock lk(mtx_);
         auto meta = this->base_index_->GetIndexMeta(std::move(cfg));
         return meta;
     }
@@ -152,7 +152,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     int64_t
     Size() const override {
         if (this->base_index_) {
-            FairReadLockGuard guard(*this->base_index_lock_);
+            std::shared_lock lk(mtx_);
             auto size = this->base_index_->Size();
             return size;
         }
@@ -162,7 +162,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     int64_t
     Count() const override {
         if (this->base_index_) {
-            FairReadLockGuard guard(*this->base_index_lock_);
+            std::shared_lock lk(mtx_);
             auto count = this->base_index_->Count();
             return count;
         }
@@ -270,8 +270,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     std::shared_ptr<DataViewIndexFlat>
         refine_offset_index_;                // a data view flat index to maintain raw data without extra memory
     std::unique_ptr<IndexNode> base_index_;  // base_index will hold data codes in memory, datatype is fp32
-    std::unique_ptr<FairRWLock>
-        base_index_lock_;  // base_index_lock_ protect all concurrent writes/reads access of base_index_
+    mutable std::shared_mutex mtx_;  // simple test for concurrence
 };
 
 namespace {
@@ -336,7 +335,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Add(const DataSetPtr data
         auto [base_ds, norms] =
             ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, blk_i, blk_size, base_index_->Dim());
         {
-            FairWriteLockGuard guard(*this->base_index_lock_);
+            std::unique_lock lk(mtx_);
             add_stat = base_index_->Add(base_ds, cfg);
         }
         try {
@@ -371,7 +370,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Search(const DataSetPtr d
         ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, std::nullopt, std::nullopt, base_index_->Dim()));
     knowhere::expected<knowhere::DataSetPtr> quant_res;
     {
-        FairReadLockGuard guard(*this->base_index_lock_);
+        std::shared_lock lk(mtx_);
         quant_res = base_index_->Search(base_index_ds, std::move(cfg), bitset);
     }
     if (!quant_res.has_value()) {
@@ -416,7 +415,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::RangeSearch(const DataSet
 
     knowhere::expected<knowhere::DataSetPtr> quant_res;
     {
-        FairReadLockGuard guard(*this->base_index_lock_);
+        std::shared_lock lk(mtx_);
         quant_res = base_index_->RangeSearch(base_index_ds, std::move(cfg), bitset);
     }
     if (!quant_res.has_value()) {
@@ -457,7 +456,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::AnnIterator(const DataSet
         ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, std::nullopt, std::nullopt, base_index_->Dim()));
     knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>> base_index_init;
     {
-        FairReadLockGuard guard(*this->base_index_lock_);
+        std::shared_lock lk(mtx_);
         base_index_init = base_index_->AnnIterator(base_index_ds, std::move(cfg), bitset, use_knowhere_search_pool);
     }
     if (!base_index_init.has_value()) {
