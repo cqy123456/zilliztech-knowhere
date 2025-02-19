@@ -336,9 +336,12 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Add(const DataSetPtr data
         auto [base_ds, norms] =
             ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, blk_i, blk_size, base_index_->Dim());
         {
+            LOG_KNOWHERE_INFO_ << "cqy: begin base index add";
             FairWriteLockGuard guard(*this->base_index_lock_);
             add_stat = base_index_->Add(base_ds, cfg);
+            LOG_KNOWHERE_INFO_ << "cqy: end of base index add";
         }
+
         try {
             refine_offset_index_->Add(blk_size, nullptr, norms.data());
         } catch (const std::exception& e) {
@@ -371,6 +374,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Search(const DataSetPtr d
         ConvertToBaseIndexFp32DataSet<DataType>(dataset, is_cosine_, std::nullopt, std::nullopt, base_index_->Dim()));
     knowhere::expected<knowhere::DataSetPtr> quant_res;
     {
+        LOG_KNOWHERE_INFO_ << "cqy: begin base index search";
         FairReadLockGuard guard(*this->base_index_lock_);
         quant_res = base_index_->Search(base_index_ds, std::move(cfg), bitset);
     }
