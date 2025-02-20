@@ -377,6 +377,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Search(const DataSetPtr d
         LOG_KNOWHERE_INFO_ << "cqy: begin base index search";
         FairReadLockGuard guard(*this->base_index_lock_);
         quant_res = base_index_->Search(base_index_ds, std::move(cfg), bitset);
+        LOG_KNOWHERE_INFO_ << "cqy: end base index search";
     }
     if (!quant_res.has_value()) {
         return quant_res;
