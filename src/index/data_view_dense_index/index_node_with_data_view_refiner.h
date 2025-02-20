@@ -393,7 +393,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Search(const DataSetPtr d
     auto labels = std::make_unique<int64_t[]>(nq * topk);
     auto distances = std::make_unique<float[]>(nq * topk);
     try {
-        LOG_KNOWHERE_INFO_ << "cqy: begin refine index search, count"<<this->Count();
+        LOG_KNOWHERE_INFO_ << "cqy: begin refine index search, count" << this->Count();
         refine_offset_index_->SearchWithIds(nq, dataset->GetTensor(), queries_lims.data(), refine_ids, topk,
                                             distances.get(), labels.get());
         LOG_KNOWHERE_INFO_ << "cqy: end refine index search";
