@@ -712,108 +712,107 @@ IvfIndexNode<DataType, IndexType>::Search(const DataSetPtr dataset, std::unique_
 
     auto ids = std::make_unique<int64_t[]>(rows * k);
     auto distances = std::make_unique<float[]>(rows * k);
-    //try {
-        std::vector<folly::Future<folly::Unit>> futs;
-        futs.reserve(rows);
-        for (int i = 0; i < rows; ++i) {
-            futs.emplace_back(search_pool_->push([&, index = i] {
-                ThreadPool::ScopedSearchOmpSetter setter(1);
-                auto offset = k * index;
-                std::unique_ptr<float[]> copied_query = nullptr;
+    // try {
+    std::vector<folly::Future<folly::Unit>> futs;
+    futs.reserve(rows);
+    for (int i = 0; i < rows; ++i) {
+        futs.emplace_back(search_pool_->push([&, index = i] {
+            ThreadPool::ScopedSearchOmpSetter setter(1);
+            auto offset = k * index;
+            std::unique_ptr<float[]> copied_query = nullptr;
 
-                BitsetViewIDSelector bw_idselector(bitset);
-                faiss::IDSelector* id_selector = (bitset.empty()) ? nullptr : &bw_idselector;
+            BitsetViewIDSelector bw_idselector(bitset);
+            faiss::IDSelector* id_selector = (bitset.empty()) ? nullptr : &bw_idselector;
 
-                if constexpr (std::is_same<IndexType, faiss::IndexBinaryIVF>::value) {
-                    auto cur_data = (const uint8_t*)data + index * ((dim + 7) / 8);
+            if constexpr (std::is_same<IndexType, faiss::IndexBinaryIVF>::value) {
+                auto cur_data = (const uint8_t*)data + index * ((dim + 7) / 8);
 
-                    int32_t* i_distances = reinterpret_cast<int32_t*>(distances.get());
+                int32_t* i_distances = reinterpret_cast<int32_t*>(distances.get());
 
-                    faiss::IVFSearchParameters ivf_search_params;
-                    ivf_search_params.nprobe = nprobe;
-                    ivf_search_params.sel = id_selector;
-                    index_->search(1, cur_data, k, i_distances + offset, ids.get() + offset, &ivf_search_params);
+                faiss::IVFSearchParameters ivf_search_params;
+                ivf_search_params.nprobe = nprobe;
+                ivf_search_params.sel = id_selector;
+                index_->search(1, cur_data, k, i_distances + offset, ids.get() + offset, &ivf_search_params);
 
-                    if (index_->metric_type == faiss::METRIC_Hamming) {
-                        // this is an in-place conversion int32_t -> float
-                        for (int64_t i = 0; i < k; i++) {
-                            distances[i + offset] = static_cast<float>(i_distances[i + offset]);
-                        }
+                if (index_->metric_type == faiss::METRIC_Hamming) {
+                    // this is an in-place conversion int32_t -> float
+                    for (int64_t i = 0; i < k; i++) {
+                        distances[i + offset] = static_cast<float>(i_distances[i + offset]);
                     }
-                } else if constexpr (std::is_same<IndexType, faiss::IndexIVFFlatCC>::value ||
-                                     std::is_same<IndexType, faiss::IndexIVFScalarQuantizerCC>::value) {
-                    auto cur_query = (const float*)data + index * dim;
-                    if (is_cosine) {
-                        copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
-                        cur_query = copied_query.get();
-                    }
+                }
+            } else if constexpr (std::is_same<IndexType, faiss::IndexIVFFlatCC>::value ||
+                                 std::is_same<IndexType, faiss::IndexIVFScalarQuantizerCC>::value) {
+                auto cur_query = (const float*)data + index * dim;
+                if (is_cosine) {
+                    copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
+                    cur_query = copied_query.get();
+                }
 
-                    faiss::IVFSearchParameters ivf_search_params;
+                faiss::IVFSearchParameters ivf_search_params;
 
-                    ivf_search_params.sel = id_selector;
-                    ivf_search_params.ensure_topk_full = ivf_cfg.ensure_topk_full.value();
-                    if (ivf_search_params.ensure_topk_full) {
-                        ivf_search_params.nprobe = index_->nlist;
-                        // use max_codes to early termination
-                        ivf_search_params.max_codes =
-                            (nprobe * 1.0 / index_->nlist) * (index_->ntotal - bitset.count());
-                    } else {
-                        ivf_search_params.nprobe = nprobe;
-                        ivf_search_params.max_codes = 0;
-                    }
-
-                    index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &ivf_search_params);
-                } else if constexpr (std::is_same<IndexType, faiss::IndexScaNN>::value) {
-                    auto cur_query = (const float*)data + index * dim;
-                    const ScannConfig& scann_cfg = static_cast<const ScannConfig&>(*cfg);
-                    if (is_cosine) {
-                        copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
-                        cur_query = copied_query.get();
-                    }
-
-                    // todo aguzhva: this is somewhat alogical. Refactor?
-                    faiss::IVFSearchParameters base_search_params;
-                    base_search_params.sel = id_selector;
-                    base_search_params.nprobe = nprobe;
-                    base_search_params.ensure_topk_full = ivf_cfg.ensure_topk_full.value();
-                    if (base_search_params.ensure_topk_full) {
-                        if (auto base_index_ptr = reinterpret_cast<faiss::IndexIVFPQFastScan*>(index_->base_index)) {
-                            auto nlist = base_index_ptr->nlist;
-                            base_search_params.nprobe = nlist;
-                            // use max_codes to early termination
-                            base_search_params.max_codes = (nprobe * 1.0 / nlist) * (index_->ntotal - bitset.count());
-                            base_search_params.max_lists_num = nprobe;
-                        } else {
-                            throw std::runtime_error("invalid base index type of scann base index");
-                        }
-                    } else {
-                        base_search_params.nprobe = nprobe;
-                        base_search_params.max_codes = 0;
-                    }
-
-                    faiss::IndexScaNNSearchParameters scann_search_params;
-                    scann_search_params.base_index_params = &base_search_params;
-                    scann_search_params.reorder_k = scann_cfg.reorder_k.value();
-
-                    index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &scann_search_params);
+                ivf_search_params.sel = id_selector;
+                ivf_search_params.ensure_topk_full = ivf_cfg.ensure_topk_full.value();
+                if (ivf_search_params.ensure_topk_full) {
+                    ivf_search_params.nprobe = index_->nlist;
+                    // use max_codes to early termination
+                    ivf_search_params.max_codes = (nprobe * 1.0 / index_->nlist) * (index_->ntotal - bitset.count());
                 } else {
-                    auto cur_query = (const float*)data + index * dim;
-                    if (is_cosine) {
-                        copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
-                        cur_query = copied_query.get();
-                    }
-
-                    faiss::IVFSearchParameters ivf_search_params;
                     ivf_search_params.nprobe = nprobe;
                     ivf_search_params.max_codes = 0;
-                    ivf_search_params.sel = id_selector;
-
-                    index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &ivf_search_params);
                 }
-            }));
-        }
-        // wait for the completion
-        WaitAllSuccess(futs);
+
+                index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &ivf_search_params);
+            } else if constexpr (std::is_same<IndexType, faiss::IndexScaNN>::value) {
+                auto cur_query = (const float*)data + index * dim;
+                const ScannConfig& scann_cfg = static_cast<const ScannConfig&>(*cfg);
+                if (is_cosine) {
+                    copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
+                    cur_query = copied_query.get();
+                }
+
+                // todo aguzhva: this is somewhat alogical. Refactor?
+                faiss::IVFSearchParameters base_search_params;
+                base_search_params.sel = id_selector;
+                base_search_params.nprobe = nprobe;
+                base_search_params.ensure_topk_full = ivf_cfg.ensure_topk_full.value();
+                if (base_search_params.ensure_topk_full) {
+                    if (auto base_index_ptr = reinterpret_cast<faiss::IndexIVFPQFastScan*>(index_->base_index)) {
+                        auto nlist = base_index_ptr->nlist;
+                        base_search_params.nprobe = nlist;
+                        // use max_codes to early termination
+                        base_search_params.max_codes = (nprobe * 1.0 / nlist) * (index_->ntotal - bitset.count());
+                        base_search_params.max_lists_num = nprobe;
+                    } else {
+                        throw std::runtime_error("invalid base index type of scann base index");
+                    }
+                } else {
+                    base_search_params.nprobe = nprobe;
+                    base_search_params.max_codes = 0;
+                }
+
+                faiss::IndexScaNNSearchParameters scann_search_params;
+                scann_search_params.base_index_params = &base_search_params;
+                scann_search_params.reorder_k = scann_cfg.reorder_k.value();
+
+                index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &scann_search_params);
+            } else {
+                auto cur_query = (const float*)data + index * dim;
+                if (is_cosine) {
+                    copied_query = CopyAndNormalizeVecs(cur_query, 1, dim);
+                    cur_query = copied_query.get();
+                }
+
+                faiss::IVFSearchParameters ivf_search_params;
+                ivf_search_params.nprobe = nprobe;
+                ivf_search_params.max_codes = 0;
+                ivf_search_params.sel = id_selector;
+
+                index_->search(1, cur_query, k, distances.get() + offset, ids.get() + offset, &ivf_search_params);
+            }
+        }));
+    }
+    // wait for the completion
+    WaitAllSuccess(futs);
     // } catch (const std::exception& e) {
     //     LOG_KNOWHERE_WARNING_ << "faiss inner error: " << e.what();
     //     return expected<DataSetPtr>::Err(Status::faiss_inner_error, e.what());
