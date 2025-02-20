@@ -712,7 +712,7 @@ IvfIndexNode<DataType, IndexType>::Search(const DataSetPtr dataset, std::unique_
 
     auto ids = std::make_unique<int64_t[]>(rows * k);
     auto distances = std::make_unique<float[]>(rows * k);
-    try {
+    //try {
         std::vector<folly::Future<folly::Unit>> futs;
         futs.reserve(rows);
         for (int i = 0; i < rows; ++i) {
@@ -814,10 +814,10 @@ IvfIndexNode<DataType, IndexType>::Search(const DataSetPtr dataset, std::unique_
         }
         // wait for the completion
         WaitAllSuccess(futs);
-    } catch (const std::exception& e) {
-        LOG_KNOWHERE_WARNING_ << "faiss inner error: " << e.what();
-        return expected<DataSetPtr>::Err(Status::faiss_inner_error, e.what());
-    }
+    // } catch (const std::exception& e) {
+    //     LOG_KNOWHERE_WARNING_ << "faiss inner error: " << e.what();
+    //     return expected<DataSetPtr>::Err(Status::faiss_inner_error, e.what());
+    // }
 
     auto res = GenResultDataSet(rows, k, std::move(ids), std::move(distances));
     return res;

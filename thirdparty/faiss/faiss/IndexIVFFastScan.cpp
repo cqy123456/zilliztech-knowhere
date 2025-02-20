@@ -669,9 +669,11 @@ void IndexIVFFastScan::search_dispatch_implem(
                         sel
                     )
                 );
+                std::cout <<"cqy: enter search_implem_10"<<std::endl;
                 search_implem_10(
                         n, x, k, *handler.get(), cq,
                         &ndis, &nlist_visited, scaler, params);
+                 std::cout <<"cqy: end of search_implem_10"<<std::endl;
             }
             // clang-format on
         } else {
