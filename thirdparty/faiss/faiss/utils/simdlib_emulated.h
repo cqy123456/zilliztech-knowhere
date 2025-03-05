@@ -16,10 +16,10 @@ namespace faiss {
 
 struct simd256bit {
     union {
-        uint8_t u8[32];
-        uint16_t u16[16];
-        uint32_t u32[8];
-        float f32[8];
+        ALIGNED(32) uint8_t u8[32];
+        ALIGNED(32) uint16_t u16[16];
+        ALIGNED(32) uint32_t u32[8];
+        ALIGNED(32) float f32[8];
     };
 
     simd256bit() {}

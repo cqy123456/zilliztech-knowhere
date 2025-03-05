@@ -38,7 +38,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
         auto data_view_index_pack = dynamic_cast<const Pack<ViewDataOp>*>(&object);
         assert(data_view_index_pack != nullptr);
         view_data_op_ = data_view_index_pack->GetPack();
-        base_index_ = std::make_unique<BaseIndexNode>(version, nullptr);
+        base_index_ = std::make_shared<BaseIndexNode>(version, nullptr);
         base_index_lock_ = std::make_unique<FairRWLock>();
     }
 
@@ -269,7 +269,7 @@ class IndexNodeWithDataViewRefiner : public IndexNode {
     ViewDataOp view_data_op_;
     std::shared_ptr<DataViewIndexFlat>
         refine_offset_index_;                // a data view flat index to maintain raw data without extra memory
-    std::unique_ptr<IndexNode> base_index_;  // base_index will hold data codes in memory, datatype is fp32
+    std::shared_ptr<IndexNode> base_index_;  // base_index will hold data codes in memory, datatype is fp32
     std::unique_ptr<FairRWLock>
         base_index_lock_;  // base_index_lock_ protect all concurrent writes/reads access of base_index_
 };
@@ -311,7 +311,7 @@ IndexNodeWithDataViewRefiner<DataType, BaseIndexNode>::Train(const DataSetPtr da
     // construct refiner
     auto refine_metric = is_cosine_ ? metric::IP : base_cfg.metric_type.value();
     refine_offset_index_ =
-        std::make_unique<DataViewIndexFlat>(dim, datatype_v<DataType>, refine_metric, this->view_data_op_, is_cosine_);
+        std::make_shared<DataViewIndexFlat>(dim, datatype_v<DataType>, refine_metric, this->view_data_op_, is_cosine_);
     // construct quant index and train:
     AdaptToBaseIndexConfig(cfg.get(), PARAM_TYPE::TRAIN, dim);
     auto base_index_dim = dynamic_cast<BaseConfig*>(cfg.get())->dim.value();
