@@ -45,7 +45,7 @@ void kernel_accumulate_block(
             accu[q][b][3].clear();
         }
     }
-
+    std::cout <<"cqy: kernel_accumulate_block, nsq"<< nsq<<std::endl;
     for (int sq = 0; sq < nsq - scaler.nscale; sq += 2) {
         simd32uint8 lut_cache[NQ];
         for (int q = 0; q < NQ; q++) {

@@ -1094,7 +1094,7 @@ void IndexIVFFastScan::search_implem_10(
 
             handler.ntotal = ls;
             handler.id_map = ids.get();
-
+            std::cout <<"cqy: M2 "<< M2<<std::endl;
             pq4_accumulate_loop(
                     1,
                     roundup(ls, bbs),
