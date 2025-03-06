@@ -148,26 +148,26 @@ void pq4_accumulate_loop_fixed_scaler(
     FAISS_THROW_IF_NOT(is_aligned_pointer(LUT));
     FAISS_THROW_IF_NOT(bbs % 32 == 0);
     FAISS_THROW_IF_NOT(nb % bbs == 0);
+    accumulate_fixed_blocks<1, 1>(nb, nsq, codes, LUT, res, scaler); 
+// #define DISPATCH(NQ, BB)                                                   
+//     case NQ * 1000 + BB:                                                   
+// //         accumulate_fixed_blocks<NQ, BB>(nb, nsq, codes, LUT, res, scaler); 
+//         break
 
-#define DISPATCH(NQ, BB)                                                   \
-    case NQ * 1000 + BB:                                                   \
-        accumulate_fixed_blocks<NQ, BB>(nb, nsq, codes, LUT, res, scaler); \
-        break
-
-    switch (nq * 1000 + bbs / 32) {
-        DISPATCH(1, 1);
-        DISPATCH(1, 2);
-        DISPATCH(1, 3);
-        DISPATCH(1, 4);
-        DISPATCH(1, 5);
-        DISPATCH(2, 1);
-        DISPATCH(2, 2);
-        DISPATCH(3, 1);
-        DISPATCH(4, 1);
-        default:
-            FAISS_THROW_FMT("nq=%d bbs=%d not instantiated", nq, bbs);
-    }
-#undef DISPATCH
+//     switch (nq * 1000 + bbs / 32) {
+//         DISPATCH(1, 1);
+//         DISPATCH(1, 2);
+//         DISPATCH(1, 3);
+//         DISPATCH(1, 4);
+//         DISPATCH(1, 5);
+//         DISPATCH(2, 1);
+//         DISPATCH(2, 2);
+//         DISPATCH(3, 1);
+//         DISPATCH(4, 1);
+//         default:
+//             FAISS_THROW_FMT("nq=%d bbs=%d not instantiated", nq, bbs);
+//     }
+// #undef DISPATCH
 }
 
 template <class ResultHandler>
