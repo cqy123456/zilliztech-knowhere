@@ -196,7 +196,7 @@ void IndexIVFFastScan::add_with_ids_impl(
         size_t list_size = bil->list_size(list_no);
 
         bil->resize(list_no, list_size + i1 - i0);
-        std::cout<<"cqy: list resize, id, new addr, size:"<<list_no<<" "<<int64_t(bil->codes[list_no].data())<<" "<<bil->codes[list_no].size();
+        std::cout<<"cqy: list resize, id, size:"<<list_no<<" "<<bil->codes[list_no].size();
         for (idx_t i = i0; i < i1; i++) {
             size_t ofs = list_size + i - i0;
             idx_t id = xids ? xids[order[i]] : ntotal + order[i];
@@ -1094,10 +1094,11 @@ void IndexIVFFastScan::search_implem_10(
 
             handler.ntotal = ls;
             handler.id_map = ids.get();
-            std::cout <<"cqy: M2, list_id, codes, size: "<< M2<<" "<<list_no<<" "<<codes.get()<<" "<<ls<<std::endl;
+            std::cout <<"cqy: M2, list_id, size: "<< M2<<" "<<list_no<<" "<<ls<<std::endl;
+            auto count = int(ls/bbs)*bbs;
             pq4_accumulate_loop(
                     1,
-                    roundup(ls, bbs),
+                    count,
                     bbs,
                     M2,
                     codes.get(),
