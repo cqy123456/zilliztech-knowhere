@@ -19,11 +19,11 @@ set(CMAKE_CXX_FLAGS "-Wall -fPIC ${CMAKE_CXX_FLAGS}")
 #set(CMAKE_CXX_FLAGS "-Wall -Werror -fPIC ${CMAKE_CXX_FLAGS}")
 
 if(__X86_64)
-  set(CMAKE_CXX_FLAGS "-msse4.2 ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-msse4.2 -fstack-protector-all -fno-omit-frame-pointer -fno-var-tracking ${CMAKE_CXX_FLAGS}")
 endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O0 -DNDEBUG")
 
 if(WITH_CUVS)
   set(CMAKE_CUDA_FLAGS_DEBUG "-O0 -g -Xcompiler=-w ")

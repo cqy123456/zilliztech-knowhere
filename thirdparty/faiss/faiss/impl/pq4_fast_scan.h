@@ -124,7 +124,7 @@ void pq4_accumulate_loop(
         int nq,
         size_t nb,
         int bbs,
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         SIMDResultHandler& res,

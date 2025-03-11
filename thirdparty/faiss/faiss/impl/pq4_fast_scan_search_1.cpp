@@ -29,7 +29,7 @@ namespace {
 
 template <int NQ, int BB, class ResultHandler, class Scaler>
 void kernel_accumulate_block(
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         ResultHandler& res,
@@ -119,7 +119,7 @@ void kernel_accumulate_block(
 template <int NQ, int BB, class ResultHandler, class Scaler>
 void accumulate_fixed_blocks(
         size_t nb,
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         ResultHandler& res,
@@ -127,6 +127,7 @@ void accumulate_fixed_blocks(
     constexpr int bbs = 32 * BB;
     for (size_t j0 = 0; j0 < nb; j0 += bbs) {
         FixedStorageHandler<NQ, 2 * BB> res2;
+        std::cout << "cqy: accumulate_fixed_blocks,j0, codes offset,nb:"<<j0<<" "<<j0*(bbs * nsq / 2)<<" "<<nb<<std::endl;
         kernel_accumulate_block<NQ, BB>(nsq, codes, LUT, res2, scaler);
         res.set_block_origin(0, j0);
         res2.to_other_handler(res);
@@ -139,7 +140,7 @@ void pq4_accumulate_loop_fixed_scaler(
         int nq,
         size_t nb,
         int bbs,
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         ResultHandler& res,
@@ -175,7 +176,7 @@ void pq4_accumulate_loop_fixed_handler(
         int nq,
         size_t nb,
         int bbs,
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         ResultHandler& res,
@@ -196,7 +197,7 @@ struct Run_pq4_accumulate_loop {
            int nq,
            size_t nb,
            int bbs,
-           int nsq,
+           const int& nsq,
            const uint8_t* codes,
            const uint8_t* LUT,
            const NormTableScaler* scaler) {
@@ -211,7 +212,7 @@ void pq4_accumulate_loop(
         int nq,
         size_t nb,
         int bbs,
-        int nsq,
+        const int& nsq,
         const uint8_t* codes,
         const uint8_t* LUT,
         SIMDResultHandler& res,
