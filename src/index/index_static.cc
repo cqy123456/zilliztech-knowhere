@@ -100,6 +100,43 @@ IndexStaticFaced<DataType>::InternalEstimateLoadResource(const float file_size, 
 }
 
 template <typename DataType>
+expected<Resource>
+IndexStaticFaced<DataType>::EstimateIndexResource(const knowhere::IndexType& indexType,
+                                                  const knowhere::IndexVersion& version, const size_t data_size,
+                                                  const size_t data_dim, const knowhere::Json& params) {
+    auto cfg = IndexStaticFaced<DataType>::CreateConfig(indexType, version);
+
+    std::string msg;
+    const Status status = LoadStaticConfig(cfg.get(), params, knowhere::STATIC, "EstimateLoadResource", &msg);
+    if (status != Status::success) {
+        LOG_KNOWHERE_ERROR_ << "Load Config failed, msg = " << msg;
+        return expected<Resource>::Err(status, msg);
+    }
+
+    if (Instance().staticEstimateIndexResourceMap.find(indexType) != Instance().staticEstimateIndexResourceMap.end()) {
+        return Instance().staticEstimateIndexResourceMap[indexType](data_size, data_dim, *cfg, version);
+    }
+
+    return InternalEstimateIndexResource(data_size, data_dim, *cfg, version);
+}
+
+template <typename DataType>
+expected<Resource>
+IndexStaticFaced<DataType>::InternalEstimateIndexResource(const size_t data_size, const size_t dim,
+                                                          const BaseConfig& config, const IndexVersion& version) {
+    Resource resource;
+    constexpr int index_factor = 2.0;
+    if (config.enable_mmap.has_value() && config.enable_mmap.value()) {
+        resource.diskCost = data_size * index_factor;
+        resource.memoryCost = 0.0f;
+    } else {
+        resource.diskCost = data_size * index_factor;
+        resource.memoryCost = 1.0f * resource.diskCost;
+    }
+    return resource;
+}
+
+template <typename DataType>
 bool
 IndexStaticFaced<DataType>::HasRawData(const IndexType& indexType, const IndexVersion& version, const Json& params) {
     auto cfg = IndexStaticFaced<DataType>::CreateConfig(indexType, version);

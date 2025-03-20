@@ -573,6 +573,24 @@ class HnswIndexNode : public IndexNode {
         }
     }
 
+    static expected<Resource>
+    StaticEstimateIndexResourceByDataShape(const size_t data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const IndexVersion& version) {
+        if (data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        Resource res{0.0f, 0.0f};
+        if (config.enable_mmap.has_value() && config.enable_mmap.value()) {
+            res.diskCost = data_size;
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = data_size;
+            res.memoryCost = data_size;
+        }
+        return res;
+    }
+
  private:
     void
     UpdateLevelLinkList(int32_t level, feder::hnsw::HNSWMeta& meta, std::unordered_set<int64_t>& id_set) const {
