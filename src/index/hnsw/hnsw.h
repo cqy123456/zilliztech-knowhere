@@ -573,6 +573,26 @@ class HnswIndexNode : public IndexNode {
         }
     }
 
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_cfg = static_cast<const HnswConfig&>(config);
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost = raw_data_size + nb * (2 * hnsw_cfg.M.value() * sizeof(hnswlib::tableint) + sizeof(hnswlib::linklistsizeint));
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = 0.0f;
+            res.memoryCost = raw_data_size + nb * (2 * hnsw_cfg.M.value() * sizeof(hnswlib::tableint) + sizeof(hnswlib::linklistsizeint));
+        }
+        return res;
+    }
+
  private:
     void
     UpdateLevelLinkList(int32_t level, feder::hnsw::HNSWMeta& meta, std::unordered_set<int64_t>& id_set) const {

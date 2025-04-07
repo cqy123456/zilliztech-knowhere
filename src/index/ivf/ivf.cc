@@ -287,6 +287,81 @@ class IvfIndexNode : public IndexNode {
         }
     };
 
+    static expected<Resource>
+    StaticEstimateSteadyStateResource(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                const bool enable_mmap, const IndexVersion& version) {
+        // if enable_mmap = true, index code will is mmap, and the centroids and diect map will still in memory.
+        Resource res{0.0f, 0.0f};
+        // binary type
+        if constexpr (std::is_same_v<IndexType, faiss::IndexBinaryIVF>) {
+            const auto& ivf_bin_cfg = static_cast<const IvfBinConfig&>(config);
+            auto nb = raw_data_size / dim * 8;
+            auto code_size_per_row = dim / 8;
+            if (enable_mmap) {
+                res.diskCost = raw_data_size + float(ivf_bin_cfg.nlist.value() * dim) / 8.0;
+                res.memoryCost = nb * sizeof(int64_t) + float(ivf_bin_cfg.nlist.value() * code_size_per_row);
+            } else {
+                res.diskCost = 0.0f;
+                res.memoryCost = raw_data_size + nb * sizeof(int64_t) + float(ivf_bin_cfg.nlist.value() * code_size_per_row);
+            }
+            return res;
+        } else {
+            // float type
+            const auto& ivf_base_config = static_cast<const IvfConfig&>(config);
+            auto nb = raw_data_size / dim * sizeof(DataType);
+            // direct map
+            res.memoryCost =  nb * sizeof(uint64_t);
+            // centroids 
+            if (enable_mmap) {
+                res.memoryCost += ivf_base_config.nlist.value() * dim * sizeof(float);
+                res.diskCost += ivf_base_config.nlist.value() * dim * sizeof(float);
+            } else {
+                res.memoryCost += ivf_base_config.nlist.value() * dim * sizeof(float);
+            }
+            // code
+            if constexpr (std::is_same_v<IndexType, faiss::IndexIVF>) {
+                if (enable_mmap) {
+                    res.diskCost += raw_data_size;
+                } else {
+                    res.memoryCost += raw_data_size;
+                } 
+            }  else if constexpr (std::is_same_v<IndexType, faiss::IndexIVFScalarQuantizer>) {
+                auto code_size = raw_data_size / 4.0f;
+                if (enable_mmap) {
+                    res.diskCost += code_size;
+                } else {
+                    res.memoryCost += code_size;
+                } 
+            }  else if constexpr (std::is_same_v<IndexType, faiss::IndexIVFPQ>) {
+                const auto& ivf_pq_cfg = static_cast<const IvfPqConfig&>(config);
+                auto code_size = nb * ivf_pq_cfg.m.value() * ivf_pq_cfg.nbits.value() / 8.0;
+                auto pq_centroids_size = (2 >> ivf_pq_cfg.nbits.value()) * dim * sizeof(float);
+                if (enable_mmap) {
+                    res.diskCost += code_size + pq_centroids_size;
+                } else {
+                    res.memoryCost += code_size + pq_centroids_size;
+                }
+            }  else if constexpr (std::is_same_v<IndexType, faiss::IndexScaNN>) {
+                // scann no support mmap
+                const auto& scann_cfg = static_cast<const ScannConfig&>(config);
+                auto nbits = 4;
+                auto code_size = nb * (dim / scann_cfg.sub_dim.value()) * nbits / 8.0;
+                auto pq_centroids_size = (2 >> nbits) * dim * sizeof(float);
+                res.memoryCost += code_size + pq_centroids_size;
+                if (scann_cfg.with_raw_data.value()) {
+                    res.memoryCost += raw_data_size;
+                }
+            } else {
+                if (enable_mmap) {
+                    res.diskCost += raw_data_size;
+                } else {
+                    res.memoryCost += raw_data_size;
+                }
+            }
+            return res;
+        }
+    }
+
  private:
     expected<DataSetPtr>
     GetIndexMetaImpl(std::unique_ptr<Config> cfg, IVFBaseTag) const {

@@ -48,6 +48,7 @@ DEFINE_HAS_STATIC_FUNC(StaticCreateConfig)
 DEFINE_HAS_STATIC_FUNC(StaticEstimateLoadResource)
 DEFINE_HAS_STATIC_FUNC(StaticHasRawData)
 DEFINE_HAS_STATIC_FUNC(StaticConfigCheck)
+DEFINE_HAS_STATIC_FUNC(StaticEstimateSteadyStateResource)
 
 template <typename DataType>
 class IndexStaticFaced {
@@ -79,6 +80,20 @@ class IndexStaticFaced {
                          const float file_size, const knowhere::Json& params);
 
     /**
+     * @brief estimate the memory and disk resource usage by data shape and index params
+     * @param indexType vector index type (HNSW, IVFFLAT, etc)
+     * @param version  vector index version (see version.h)
+     * @param data_size (bytes), total size of dataset
+     * @param dim dim of dataset
+     * @param params the union of the index build and load parameters
+     * @param enable_mmap whether to use mmap to load index
+     * @return memory and disk usage for the index steady status
+     */
+    static expected<Resource>
+    EstimateSteadyStateResource(const knowhere::IndexType& indexType, const knowhere::IndexVersion& version,
+                          const size_t raw_data_size, const size_t data_dim, const knowhere::Json& params, const bool enable_mmap);
+
+    /**
      * @brief determine whether the index contains the raw data before loading the index by index params
      * @param indexType vector index type (HNSW, IVFFLAT, etc)
      * @param version vector index version (see version.h)
@@ -103,6 +118,11 @@ class IndexStaticFaced {
             staticEstimateLoadResourceMap[indexType] = VecIndexNode::StaticEstimateLoadResource;
         }
 
+        if constexpr (has_static_StaticEstimateSteadyStateResource<
+                          VecIndexNode, decltype(IndexStaticFaced<DataType>::InternalEstimateSteadyStateResource)>::value) {
+            staticEstimateSteadyStateResourceMap[indexType] = VecIndexNode::StaticEstimateSteadyStateResource;
+        }
+
         if constexpr (has_static_StaticHasRawData<
                           VecIndexNode, decltype(IndexStaticFaced<DataType>::InternalStaticHasRawData)>::value) {
             staticHasRawDataMap[indexType] = VecIndexNode::StaticHasRawData;
@@ -124,6 +144,10 @@ class IndexStaticFaced {
     InternalEstimateLoadResource(const float file_size, const knowhere::BaseConfig& config,
                                  const IndexVersion& version);
 
+    static expected<Resource>
+    InternalEstimateSteadyStateResource(const size_t raw_data_size, const size_t data_dim, const knowhere::BaseConfig& config, const bool enable_mmap,
+                                  const IndexVersion& version);
+
     static bool
     InternalStaticHasRawData(const knowhere::BaseConfig& config, const IndexVersion& version);
 
@@ -136,6 +160,7 @@ class IndexStaticFaced {
     std::map<std::string, std::function<decltype(InternalStaticCreateConfig)>> staticCreateConfigMap;
     std::map<std::string, std::function<decltype(InternalStaticHasRawData)>> staticHasRawDataMap;
     std::map<std::string, std::function<decltype(InternalEstimateLoadResource)>> staticEstimateLoadResourceMap;
+    std::map<std::string, std::function<decltype(InternalEstimateSteadyStateResource)>> staticEstimateSteadyStateResourceMap;
     std::map<std::string, std::function<decltype(InternalConfigCheck)>> staticConfigCheckMap;
 };
 

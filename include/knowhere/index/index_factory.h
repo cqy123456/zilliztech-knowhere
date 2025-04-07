@@ -80,6 +80,10 @@ class IndexFactory {
 #define KNOWHERE_REGISTER_STATIC(name, index_node, data_type, ...)               \
     const IndexStaticFaced<data_type>& KNOWHERE_STATIC_CONCAT(name, data_type) = \
         IndexStaticFaced<data_type>::Instance().RegisterStaticFunc<index_node<data_type, ##__VA_ARGS__>>(#name);
+// if index node use mock data wrapper, static function will register with mock data type
+#define KNOWHERE_REGISTER_STATIC_WIHT_MOCK_DATA(name, index_node, data_type, ...) \
+    const IndexStaticFaced<data_type>& KNOWHERE_STATIC_CONCAT(name, data_type) =  \
+        IndexStaticFaced<data_type>::Instance().RegisterStaticFunc<index_node<MockData<data_type>::type, ##__VA_ARGS__>>(#name);
 
 // register the index implementation along with its associated features. Please carefully check the types and features
 // supported by the index—both need to be consistent, otherwise the registration will be skipped
@@ -92,7 +96,7 @@ class IndexFactory {
         data_type, typeCheck<data_type>(features), features)
 
 #define KNOWHERE_MOCK_REGISTER_GLOBAL(name, index_node, data_type, features, ...)                          \
-    KNOWHERE_REGISTER_STATIC(name, index_node, data_type, ##__VA_ARGS__)                                   \
+    KNOWHERE_REGISTER_STATIC_WIHT_MOCK_DATA(name, index_node, data_type, ##__VA_ARGS__)                    \
     KNOWHERE_REGISTER_GLOBAL(                                                                              \
         name,                                                                                              \
         [](const int32_t& version, const Object& object) {                                                 \

@@ -135,6 +135,20 @@ class SparseInvertedIndexNode : public IndexNode {
         return GenResultDataSet(nq, k, p_id.release(), p_dist.release());
     }
 
+     static expected<Resource>
+    StaticEstimateSteadyStateResource(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,const bool enable_mmap,
+                                const IndexVersion& version) {
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost = raw_data_size;
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = 0.0f;
+            res.memoryCost = raw_data_size;
+        }
+        return res;
+    }
+
  private:
     class RefineIterator : public IndexIterator {
      public:

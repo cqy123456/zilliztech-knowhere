@@ -70,6 +70,25 @@ class DiskANNIndexNode : public IndexNode {
         return IsMetricType(metric_type, metric::L2) || IsMetricType(metric_type, metric::COSINE);
     }
 
+    static expected<Resource>
+    StaticEstimateSteadyStateResource(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config, const bool enable_mmap, 
+                                const IndexVersion& version) {
+        if (raw_data_size % (dim * sizeof(DataType)) != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        auto diskann_conf = static_cast<const DiskANNConfig&>(config);
+        size_t data_rows = raw_data_size / (dim * sizeof(DataType)) ;
+        Resource res{0.0f, 0.0f};
+        // diskann mainly holds pq codes and cache in memory
+        res.memoryCost += (diskann_conf.pq_code_budget_gb.value() + diskann_conf.search_cache_budget_gb.value()) * 1024 * 1024 * 1024;
+        // diskann mainly holds pq codes, neighbors and raw data in disk
+        res.diskCost += raw_data_size;
+        res.diskCost += diskann_conf.pq_code_budget_gb.value() * 1024 * 1024 * 1024;
+        res.diskCost += data_rows * (diskann_conf.max_degree.value() + 1) * sizeof(unsigned);
+        return res;
+    }
+
     bool
     HasRawData(const std::string& metric_type) const override {
         return IsMetricType(metric_type, metric::L2) || IsMetricType(metric_type, metric::COSINE);

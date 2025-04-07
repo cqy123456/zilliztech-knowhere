@@ -1804,6 +1804,27 @@ class BaseFaissRegularIndexHNSWFlatNodeTemplate : public BaseFaissRegularIndexHN
     StaticHasRawData(const knowhere::BaseConfig& config, const IndexVersion& version) {
         return true;
     }
+
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, raw_data_size % dim != 0.");
+        }
+        // roughly estimate
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_cfg = static_cast<const FaissHnswFlatConfig&>(config);
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost = raw_data_size + nb * (2*hnsw_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = 0.0f;
+            res.memoryCost = raw_data_size + nb * (2*hnsw_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+        }
+        return res;
+    }
 };
 
 // this is a regular node that can be initialized as some existing index type,
@@ -1995,6 +2016,27 @@ class BaseFaissRegularIndexHNSWFlatNodeTemplateWithSearchFallback : public HNSWI
     std::unique_ptr<BaseConfig>
     CreateConfig() const override {
         return StaticCreateConfig();
+    }
+
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, raw_data_size % dim != 0.");
+        }
+        // roughly estimate
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_cfg = static_cast<const FaissHnswFlatConfig&>(config);
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost = raw_data_size + nb * (2*hnsw_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = 0.0f;
+            res.memoryCost = raw_data_size + nb * (2*hnsw_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+        }
+        return res;
     }
 };
 
@@ -2334,6 +2376,38 @@ class BaseFaissRegularIndexHNSWSQNodeTemplate : public BaseFaissRegularIndexHNSW
 
         return has_lossless_refine_index(hnsw_sq_cfg, datatype_v<DataType>);
     }
+
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        // roughly estimate
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_sq_cfg = static_cast<const FaissHnswSqConfig&>(config);
+        float code_size = 0; 
+        {
+            auto sq = std::make_unique<faiss::ScalarQuantizer>(dim, get_sq_quantizer_type(hnsw_sq_cfg.sq_type.value()));
+            code_size = nb * sq->code_size;
+        }
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost += code_size + nb * (2*hnsw_sq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            res.memoryCost += 0.0f;
+            if (has_lossless_refine_index(hnsw_sq_cfg, datatype_v<DataType>)) {
+                res.diskCost += raw_data_size;
+            }
+        } else {
+            res.diskCost += 0.0f;
+            res.memoryCost += code_size+ nb * (2*hnsw_sq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            if (has_lossless_refine_index(hnsw_sq_cfg, datatype_v<DataType>)) {
+                res.memoryCost += raw_data_size;
+            }
+        }
+        return res;
+    }
 };
 
 // this index trains PQ and HNSW+FLAT separately, then constructs HNSW+PQ
@@ -2605,6 +2679,34 @@ class BaseFaissRegularIndexHNSWPQNodeTemplate : public BaseFaissRegularIndexHNSW
     StaticHasRawData(const knowhere::BaseConfig& config, const IndexVersion& version) {
         auto hnsw_cfg = static_cast<const FaissHnswConfig&>(config);
         return has_lossless_refine_index(hnsw_cfg, datatype_v<DataType>);
+    }
+
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        // roughly estimate
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_pq_cfg = static_cast<const FaissHnswPqConfig&>(config);
+        auto code_size = nb * hnsw_pq_cfg.m.value() * hnsw_pq_cfg.nbits.value() / 8.0f;
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost += code_size + nb * (2*hnsw_pq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            res.memoryCost += 0.0f;
+            if (has_lossless_refine_index(hnsw_pq_cfg, datatype_v<DataType>)) {
+                res.diskCost += raw_data_size;
+            }
+        } else {
+            res.diskCost += 0.0f;
+            res.memoryCost += code_size + nb * (2*hnsw_pq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            if (has_lossless_refine_index(hnsw_pq_cfg, datatype_v<DataType>)) {
+                res.memoryCost += raw_data_size;
+            }
+        }
+        return res;
     }
 };
 
@@ -2885,6 +2987,45 @@ class BaseFaissRegularIndexHNSWPRQNodeTemplate : public BaseFaissRegularIndexHNS
     StaticHasRawData(const knowhere::BaseConfig& config, const IndexVersion& version) {
         auto hnsw_cfg = static_cast<const FaissHnswConfig&>(config);
         return has_lossless_refine_index(hnsw_cfg, datatype_v<DataType>);
+    }
+
+    static expected<Resource>
+    StaticEstimateSteadyStateResourceByDataShape(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,
+                                           const bool enable_mmap, const IndexVersion& version) {
+        if (raw_data_size % dim != 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        // roughly estimate
+        auto nb = raw_data_size / (dim * sizeof(DataType));
+        const auto& hnsw_prq_cfg = static_cast<const FaissHnswPrqConfig&>(config);
+        float code_size = 0;
+        {
+            auto metric = Str2FaissMetricType(hnsw_prq_cfg.metric_type.value());
+            faiss::AdditiveQuantizer::Search_type_t prq_search_type =
+                (metric.value() == faiss::MetricType::METRIC_INNER_PRODUCT)
+                    ? faiss::AdditiveQuantizer::Search_type_t::ST_LUT_nonorm
+                    : faiss::AdditiveQuantizer::Search_type_t::ST_norm_float;
+            auto prq =  std::make_unique<faiss::IndexProductResidualQuantizer>(
+                    dim, hnsw_prq_cfg.m.value(), hnsw_prq_cfg.nrq.value(), hnsw_prq_cfg.nbits.value(), metric.value(),
+                    prq_search_type);
+            code_size = nb * prq->code_size;
+        }
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost += code_size + nb * (2*hnsw_prq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            res.memoryCost += 0.0f;
+            if (has_lossless_refine_index(hnsw_prq_cfg, datatype_v<DataType>)) {
+                res.diskCost += raw_data_size;
+            }
+        } else {
+            res.diskCost += 0.0f;
+            res.memoryCost += code_size + nb * (2*hnsw_prq_cfg.M.value() * sizeof(faiss::HNSW::storage_idx_t));
+            if (has_lossless_refine_index(hnsw_prq_cfg, datatype_v<DataType>)) {
+                res.memoryCost += raw_data_size;
+            }
+        }
+        return res;
     }
 };
 

@@ -100,6 +100,43 @@ IndexStaticFaced<DataType>::InternalEstimateLoadResource(const float file_size, 
 }
 
 template <typename DataType>
+expected<Resource>
+IndexStaticFaced<DataType>::EstimateSteadyStateResource(const knowhere::IndexType& indexType,
+                                                  const knowhere::IndexVersion& version, const size_t raw_data_size,
+                                                  const size_t data_dim, const knowhere::Json& params, const bool enable_mmap) {
+    auto cfg = IndexStaticFaced<DataType>::CreateConfig(indexType, version);
+
+    std::string msg;
+    const Status status = LoadStaticConfig(cfg.get(), params, knowhere::STATIC, "EstimateSteadyStateResource", &msg);
+    if (status != Status::success) {
+        LOG_KNOWHERE_ERROR_ << "Load Config failed, msg = " << msg;
+        return expected<Resource>::Err(status, msg);
+    }
+
+    if (Instance().staticEstimateSteadyStateResourceMap.find(indexType) != Instance().staticEstimateSteadyStateResourceMap.end()) {
+        return Instance().staticEstimateSteadyStateResourceMap[indexType](raw_data_size, data_dim, *cfg, enable_mmap, version);
+    }
+
+    return InternalEstimateSteadyStateResource(raw_data_size, data_dim, *cfg, enable_mmap, version);
+}
+
+template <typename DataType>
+expected<Resource>
+IndexStaticFaced<DataType>::InternalEstimateSteadyStateResource(const size_t raw_data_size, const size_t dim,
+                                                          const BaseConfig& config, const bool enable_mmap, const IndexVersion& version) {
+    Resource resource;
+    constexpr int index_factor = 1.5;
+    if (enable_mmap) {
+        resource.diskCost = raw_data_size * index_factor;
+        resource.memoryCost = 0.0f;
+    } else {
+        resource.diskCost = 0.0;
+        resource.memoryCost = raw_data_size * index_factor;
+    }
+    return resource;
+}
+
+template <typename DataType>
 bool
 IndexStaticFaced<DataType>::HasRawData(const IndexType& indexType, const IndexVersion& version, const Json& params) {
     auto cfg = IndexStaticFaced<DataType>::CreateConfig(indexType, version);

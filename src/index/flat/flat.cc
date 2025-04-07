@@ -390,6 +390,24 @@ class FlatIndexNode : public IndexNode {
         }
     }
 
+    static expected<Resource>
+    StaticEstimateSteadyStateResource(const size_t raw_data_size, const size_t dim, const knowhere::BaseConfig& config,const bool enable_mmap,
+                                const IndexVersion& version) {
+        if (raw_data_size % (dim * sizeof(DataType))!= 0) {
+            return expected<Resource>::Err(Status::invalid_args,
+                                           "Fail to estimate index resource, data_size % dim != 0.");
+        }
+        Resource res{0.0f, 0.0f};
+        if (enable_mmap) {
+            res.diskCost = raw_data_size;
+            res.memoryCost = 0.0f;
+        } else {
+            res.diskCost = 0;
+            res.memoryCost = raw_data_size;
+        }
+        return res;
+    }
+
  private:
     std::unique_ptr<IndexType> index_;
     std::shared_ptr<ThreadPool> search_pool_;
