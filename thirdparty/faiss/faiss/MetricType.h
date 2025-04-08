@@ -54,7 +54,8 @@ using idx_t = int64_t;
 /// we need to support similarity and dis-similarity metrics in a flexible way
 constexpr bool is_similarity_metric(MetricType metric_type) {
     return ((metric_type == METRIC_INNER_PRODUCT) ||
-            (metric_type == METRIC_Jaccard));
+            (metric_type == METRIC_Jaccard) || 
+            (metric_type == METRIC_MinHash_Jaccard));
 }
 
 } // namespace faiss

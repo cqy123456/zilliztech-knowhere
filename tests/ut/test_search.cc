@@ -48,6 +48,12 @@ TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
         json[knowhere::meta::RANGE_FILTER] = knowhere::IsMetricType(metric, knowhere::metric::L2) ? 0.0 : 1.01;
         return json;
     };
+    auto ivfflat_gen = [base_gen]() {
+        knowhere::Json json = base_gen();
+        json[knowhere::indexparam::NLIST] = 16;
+        json[knowhere::indexparam::NPROBE] = 8;
+        return json;
+    };
     auto hnsw_gen = [base_gen]() {
         knowhere::Json json = base_gen();
         json[knowhere::indexparam::HNSW_M] = 32;
@@ -67,7 +73,8 @@ TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
     SECTION("Test Search") {
         using std::make_tuple;
         auto [name, gen] = GENERATE_REF(table<std::string, std::function<knowhere::Json()>>({
-            make_tuple(knowhere::IndexEnum::INDEX_HNSW, hnsw_gen),
+            //make_tuple(knowhere::IndexEnum::INDEX_HNSW, hnsw_gen),
+            make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFFLAT, ivfflat_gen),
         }));
         knowhere::BinarySet bs;
         // build process

@@ -279,7 +279,7 @@ struct IVFFlatScanner : InvertedListScanner {
         const float* yj = (float*)code;
         float dis = metric == METRIC_INNER_PRODUCT
                 ? fvec_inner_product(xi, yj, d)
-                : fvec_L2sqr(xi, yj, d);
+                : (metric == METRIC_MinHash_Jaccard ? fvec_minhash_jaccard(xi, yj, d):fvec_L2sqr(xi, yj, d));
         return dis;
     }
 
@@ -313,8 +313,11 @@ struct IVFFlatScanner : InvertedListScanner {
 
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
+                xi, list_vecs, d, list_size, filter, apply); 
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
-        }
+        } 
         else {
             fvec_L2sqr_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
@@ -344,6 +347,9 @@ struct IVFFlatScanner : InvertedListScanner {
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
                     xi, list_vecs, d, list_size, filter, apply);
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
+                xi, list_vecs, d, list_size, filter, apply);
         } else {
             fvec_L2sqr_ny_if(xi, list_vecs, d, list_size, filter, apply);
         }
@@ -375,11 +381,14 @@ struct IVFFlatScanner : InvertedListScanner {
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
-        }
-        else {
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
+                xi, list_vecs, d, list_size, filter, apply);
+        } else {
             fvec_L2sqr_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
         }
+        
     }
 };
 
@@ -410,7 +419,7 @@ struct IVFFlatBitsetViewScanner : InvertedListScanner {
         const float* yj = (float*)code;
         float dis = metric == METRIC_INNER_PRODUCT
                 ? fvec_inner_product(xi, yj, d)
-                : fvec_L2sqr(xi, yj, d);
+                : (metric == METRIC_MinHash_Jaccard ? fvec_minhash_jaccard(xi, yj, d):fvec_L2sqr(xi, yj, d));
         return dis;
     }
 
@@ -444,8 +453,11 @@ struct IVFFlatBitsetViewScanner : InvertedListScanner {
 
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
+                xi, list_vecs, d, list_size, filter, apply); 
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
-        }
+        } 
         else {
             fvec_L2sqr_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
@@ -474,9 +486,14 @@ struct IVFFlatBitsetViewScanner : InvertedListScanner {
         };
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
-                    xi, list_vecs, d, list_size, filter, apply);
-        } else {
-            fvec_L2sqr_ny_if(xi, list_vecs, d, list_size, filter, apply);
+                xi, list_vecs, d, list_size, filter, apply); 
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
+                xi, list_vecs, d, list_size, filter, apply);
+        } 
+        else {
+            fvec_L2sqr_ny_if(
+                xi, list_vecs, d, list_size, filter, apply);
         }
     }
 
@@ -505,8 +522,11 @@ struct IVFFlatBitsetViewScanner : InvertedListScanner {
 
         if constexpr (metric == METRIC_INNER_PRODUCT) {
             fvec_inner_products_ny_if(
+                xi, list_vecs, d, list_size, filter, apply); 
+        } else if constexpr (metric == METRIC_MinHash_Jaccard) {
+            fvec_minhash_jaccard_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
-        }
+        } 
         else {
             fvec_L2sqr_ny_if(
                 xi, list_vecs, d, list_size, filter, apply);
@@ -530,8 +550,16 @@ InvertedListScanner* get_InvertedListScanner1(
                     CMin<float, int64_t>,
                     use_sel>(ivf->d, store_pairs, sel);
         } else if (ivf->metric_type == METRIC_L2) {
-            return new IVFFlatBitsetViewScanner<METRIC_L2, CMax<float, int64_t>, use_sel>(
+            return new IVFFlatBitsetViewScanner<
+                    METRIC_L2, 
+                    CMax<float, int64_t>, 
+                    use_sel>(
                     ivf->d, store_pairs, sel);
+        } else if (ivf->metric_type == METRIC_MinHash_Jaccard) {
+            return new IVFFlatBitsetViewScanner<
+                    METRIC_MinHash_Jaccard, 
+                    CMin<float, int64_t>, 
+                    use_sel>(ivf->d, store_pairs, sel);
         } else {
             FAISS_THROW_MSG("metric type not supported");
         }
@@ -546,6 +574,9 @@ InvertedListScanner* get_InvertedListScanner1(
     } else if (ivf->metric_type == METRIC_L2) {
         return new IVFFlatScanner<METRIC_L2, CMax<float, int64_t>, use_sel>(
                 ivf->d, store_pairs, sel);
+    } else if (ivf->metric_type == METRIC_MinHash_Jaccard) {
+            return new IVFFlatScanner<METRIC_MinHash_Jaccard, CMin<float, int64_t>, use_sel>(
+                    ivf->d, store_pairs, sel);
     } else {
         FAISS_THROW_MSG("metric type not supported");
     }

@@ -89,10 +89,11 @@ class IvfIndexNode : public IndexNode {
             if constexpr (KnowhereFloatTypeCheck<DataType>::value) {
                 if (IsMetricType(ivf_cfg.metric_type.value(), metric::L2) ||
                     IsMetricType(ivf_cfg.metric_type.value(), metric::IP) ||
-                    IsMetricType(ivf_cfg.metric_type.value(), metric::COSINE)) {
+                    IsMetricType(ivf_cfg.metric_type.value(), metric::COSINE) ||
+                    IsMetricType(ivf_cfg.metric_type.value(), metric::MHJACCARD)) {
                 } else {
                     msg = "metric type " + ivf_cfg.metric_type.value() +
-                          " not found or not supported, supported: [L2 IP COSINE]";
+                          " not found or not supported, supported: [L2 IP COSINE MHJACCARD]";
                     return Status::invalid_metric_type;
                 }
             } else {

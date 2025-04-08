@@ -501,7 +501,7 @@ void IndexIVF::search_preassigned(
         auto init_result = [&](float* simi, idx_t* idxi) {
             if (!do_heap_init)
                 return;
-            if (metric_type == METRIC_INNER_PRODUCT) {
+            if (metric_type == METRIC_INNER_PRODUCT || metric_type == METRIC_MinHash_Jaccard) {
                 heap_heapify<HeapForIP>(k, simi, idxi);
             } else {
                 heap_heapify<HeapForL2>(k, simi, idxi);
@@ -512,7 +512,7 @@ void IndexIVF::search_preassigned(
                                      const idx_t* local_idx,
                                      float* simi,
                                      idx_t* idxi) {
-            if (metric_type == METRIC_INNER_PRODUCT) {
+            if (metric_type == METRIC_INNER_PRODUCT || metric_type == METRIC_MinHash_Jaccard) {
                 heap_addn<HeapForIP>(k, simi, idxi, local_dis, local_idx, k);
             } else {
                 heap_addn<HeapForL2>(k, simi, idxi, local_dis, local_idx, k);
@@ -522,7 +522,7 @@ void IndexIVF::search_preassigned(
         auto reorder_result = [&](float* simi, idx_t* idxi) {
             if (!do_heap_init)
                 return;
-            if (metric_type == METRIC_INNER_PRODUCT) {
+            if (metric_type == METRIC_INNER_PRODUCT || metric_type == METRIC_MinHash_Jaccard) {
                 heap_reorder<HeapForIP>(k, simi, idxi);
             } else {
                 heap_reorder<HeapForL2>(k, simi, idxi);

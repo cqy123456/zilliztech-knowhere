@@ -986,7 +986,19 @@ int distance_compute_blas_query_bs = 4096;
 int distance_compute_blas_database_bs = 1024;
 int distance_compute_min_k_reservoir = 100;
 
-void knn_minhash_jacarrd(
+void knn_minhash_jaccard(
+        const float* x,
+        const float* y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        float_minheap_array_t* res,
+        const IDSelector* sel) {
+    FAISS_THROW_IF_NOT(nx == res->nh);
+    knn_minhash_jaccard(x, y, d, nx, ny, res->k, res->val, res->ids, sel);
+}
+
+void knn_minhash_jaccard(
     const float* x,
     const float* y,
     size_t d,

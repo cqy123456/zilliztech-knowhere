@@ -213,7 +213,7 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                         return Status::faiss_inner_error;
                     } else {
                         auto cur_query = (const DataType*)xq + dim * index;
-                        faiss::knn_minhash_jacarrd(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
+                        faiss::knn_minhash_jaccard(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
                             cur_labels, id_selector);
                     }
                     break;
@@ -380,7 +380,7 @@ BruteForce::SearchWithBuf(const DataSetPtr base_dataset, const DataSetPtr query_
                         return Status::faiss_inner_error;
                     } else {
                         auto cur_query = (const DataType*)xq + dim * index;
-                        faiss::knn_minhash_jacarrd(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
+                        faiss::knn_minhash_jaccard(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
                             cur_labels, id_selector);
                     }
                     break;

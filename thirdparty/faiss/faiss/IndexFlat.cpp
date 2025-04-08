@@ -70,6 +70,9 @@ void IndexFlat::search(
     //     float_minheap_array_t res = {size_t(n), size_t(k), labels, distances};
     //     knn_extra_metrics(
     //             x, get_xb(), d, n, ntotal, metric_type, metric_arg, &res);
+    } else if (metric_type == METRIC_MinHash_Jaccard) {
+        float_minheap_array_t res = {size_t(n), size_t(k), labels, distances};
+        knn_minhash_jaccard(x, get_xb(), d, n, ntotal, &res, sel);        
     } else if (metric_type == METRIC_Jaccard) {
         float_maxheap_array_t res = {size_t(n), size_t(k), labels, distances};
         knn_jaccard(x, get_xb(), d, n, ntotal, &res, sel);        
