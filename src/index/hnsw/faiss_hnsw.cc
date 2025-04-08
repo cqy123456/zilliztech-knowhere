@@ -2893,8 +2893,8 @@ KNOWHERE_SIMPLE_REGISTER_DENSE_FLOAT_ALL_GLOBAL(HNSW_DEPRECATED,
                                                 BaseFaissRegularIndexHNSWFlatNodeTemplateWithSearchFallback,
                                                 knowhere::feature::MMAP | knowhere::feature::MV)
 #else
-KNOWHERE_SIMPLE_REGISTER_DENSE_FLOAT_ALL_GLOBAL(HNSW, BaseFaissRegularIndexHNSWFlatNodeTemplateWithSearchFallback,
-                                                knowhere::feature::MMAP | knowhere::feature::MV)
+// KNOWHERE_SIMPLE_REGISTER_DENSE_FLOAT_ALL_GLOBAL(HNSW, BaseFaissRegularIndexHNSWFlatNodeTemplateWithSearchFallback,
+//                                                 knowhere::feature::MMAP | knowhere::feature::MV)
 KNOWHERE_SIMPLE_REGISTER_DENSE_INT_GLOBAL(HNSW, BaseFaissRegularIndexHNSWFlatNodeTemplate,
                                           knowhere::feature::MMAP | knowhere::feature::MV)
 #endif

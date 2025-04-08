@@ -43,7 +43,7 @@ GenDataSet(int rows, int dim, int seed = 42) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<> distrib(0.0, 100.0);
     float* ts = new float[rows * dim];
-    for (int i = 0; i < rows * dim; ++i) ts[i] = distrib(rng);
+    for (int i = 0; i < rows * dim; ++i) ts[i] = int(distrib(rng))%100;
     auto ds = knowhere::GenDataSet(rows, dim, ts);
     ds->SetIsOwner(true);
     return ds;

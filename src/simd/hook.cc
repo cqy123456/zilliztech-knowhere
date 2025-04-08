@@ -54,6 +54,7 @@ bool support_pq_fast_scan = true;
 ///////////////////////////////////////////////////////////////////////////////
 decltype(fvec_inner_product) fvec_inner_product = fvec_inner_product_ref;
 decltype(fvec_L2sqr) fvec_L2sqr = fvec_L2sqr_ref;
+decltype(fvec_minhash_jaccard) fvec_minhash_jaccard = fvec_minhash_jaccard_ref;
 
 decltype(fvec_L1) fvec_L1 = fvec_L1_ref;
 decltype(fvec_Linf) fvec_Linf = fvec_Linf_ref;
@@ -70,6 +71,7 @@ decltype(fvec_L2sqr_ny_transposed) fvec_L2sqr_ny_transposed = fvec_L2sqr_ny_tran
 
 decltype(fvec_inner_product_batch_4) fvec_inner_product_batch_4 = fvec_inner_product_batch_4_ref;
 decltype(fvec_L2sqr_batch_4) fvec_L2sqr_batch_4 = fvec_L2sqr_batch_4_ref;
+decltype(fvec_minhash_jaccard_batch_4) fvec_minhash_jaccard_batch_4 = fvec_minhash_jaccard_batch_4_ref;
 
 // for hnsw sq, obsolete
 decltype(ivec_inner_product) ivec_inner_product = ivec_inner_product_ref;

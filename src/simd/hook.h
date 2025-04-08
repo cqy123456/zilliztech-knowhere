@@ -38,6 +38,9 @@ extern float (*fvec_L1)(const float*, const float*, size_t);
 /// infinity distance
 extern float (*fvec_Linf)(const float*, const float*, size_t);
 
+/// jaccard ditances of min hash
+extern float (*fvec_minhash_jaccard)(const float*, const float*, size_t);
+
 /// squared norm of a vector
 extern float (*fvec_norm_L2sqr)(const float*, size_t);
 
@@ -80,6 +83,10 @@ extern void (*fvec_inner_product_batch_4)(const float*, const float*, const floa
 /// todo aguzhva: bring non-ref versions
 extern void (*fvec_L2sqr_batch_4)(const float*, const float*, const float*, const float*, const float*, const size_t,
                                   float&, float&, float&, float&);
+
+extern void (*fvec_minhash_jaccard_batch_4)(const float*, const float*, const float*, const float*, const float*, const size_t,
+                                float&, float&, float&, float&);
+  
 
 // for hnsw sq, obsolete
 extern int32_t (*ivec_inner_product)(const int8_t*, const int8_t*, size_t);

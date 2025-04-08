@@ -207,6 +207,17 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                     }
                     break;
                 }
+                case faiss::METRIC_MinHash_Jaccard :{
+                    if constexpr (!std::is_same_v<DataType, knowhere::fp32>) {
+                        LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD not supported for current vector type";
+                        return Status::faiss_inner_error;
+                    } else {
+                        auto cur_query = (const DataType*)xq + dim * index;
+                        faiss::knn_minhash_jacarrd(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
+                            cur_labels, id_selector);
+                    }
+                    break;
+                }
                 case faiss::METRIC_Jaccard: {
                     auto cur_query = (const uint8_t*)xq + (dim / 8) * index;
                     faiss::float_maxheap_array_t res = {size_t(1), size_t(topk), cur_labels, cur_distances};
@@ -360,6 +371,17 @@ BruteForce::SearchWithBuf(const DataSetPtr base_dataset, const DataSetPtr query_
                             LOG_KNOWHERE_ERROR_ << "Metric IP not supported for current vector type";
                             return Status::faiss_inner_error;
                         }
+                    }
+                    break;
+                }
+                case faiss::METRIC_MinHash_Jaccard :{
+                    if constexpr (!std::is_same_v<DataType, knowhere::fp32>) {
+                        LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD not supported for current vector type";
+                        return Status::faiss_inner_error;
+                    } else {
+                        auto cur_query = (const DataType*)xq + dim * index;
+                        faiss::knn_minhash_jacarrd(cur_query, (const float*)xb, dim, 1, nb, topk, cur_distances,
+                            cur_labels, id_selector);
                     }
                     break;
                 }

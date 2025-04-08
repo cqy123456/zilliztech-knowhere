@@ -53,6 +53,7 @@ enum Metric {
     COSINE = 2,
     HAMMING = 10,
     JACCARD = 11,
+    MHJACCARD = 12,
     UNKNOWN = 100,
 };
 
@@ -92,6 +93,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 metric_type_ = Metric::INNER_PRODUCT;
             } else if (auto x = dynamic_cast<CosineSpace<data_t, dist_t>*>(s)) {
                 metric_type_ = Metric::COSINE;
+            } else if (auto x = dynamic_cast<MHJaccardSpace*>(s)) {
+                metric_type_ = Metric::MHJACCARD;
             } else {
                 metric_type_ = Metric::UNKNOWN;
             }
@@ -793,6 +796,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 space_ = new hnswlib::InnerProductSpace<data_t, dist_t>(dim);
             } else if (metric_type_ == Metric::COSINE) {
                 space_ = new hnswlib::CosineSpace<data_t, dist_t>(dim);
+            } else if (metric_type_ == Metric::MHJACCARD) {
+                space_ = new hnswlib::MHJaccardSpace(dim);
             } else {
                 throw std::runtime_error("Invalid metric type for float data type(float32, float16 and bfloat16):" +
                                          std::to_string(metric_type_));
@@ -951,6 +956,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t> {
                 space_ = new hnswlib::InnerProductSpace<data_t, dist_t>(dim);
             } else if (metric_type_ == Metric::COSINE) {
                 space_ = new hnswlib::CosineSpace<data_t, dist_t>(dim);
+            } else if (metric_type_ == Metric::MHJACCARD) {
+                space_ = new hnswlib::MHJaccardSpace(dim);
             } else {
                 throw std::runtime_error("Invalid metric type of float type(float32, float16 and bfloat16):" +
                                          std::to_string(metric_type_));

@@ -204,6 +204,17 @@ FAISS_API extern int distance_compute_blas_database_bs;
 // rather than a heap
 FAISS_API extern int distance_compute_min_k_reservoir;
 
+void knn_minhash_jacarrd(
+        const float* x,
+        const float* y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        size_t k,
+        float* vals,
+        int64_t* ids,
+        const IDSelector* sel = nullptr);
+
 /** Return the k nearest neighors of each of the nx vectors x among the ny
  *  vector y, w.r.t to max inner product.
  *

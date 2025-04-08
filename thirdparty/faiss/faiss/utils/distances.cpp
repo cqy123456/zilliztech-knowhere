@@ -238,6 +238,47 @@ void exhaustive_inner_product_seq_impl(
     }
 }
 
+// An improved implementation that
+// 1. helps the branch predictor,
+// 2. computes distances for 4 elements per loop
+template <class BlockResultHandler, class SelectorHelper>
+void exhaustive_minhash_jaccard_seq_impl(
+        const float* __restrict x,
+        const float* __restrict y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        BlockResultHandler& res,
+        const SelectorHelper selector) {
+    using SingleResultHandler = typename BlockResultHandler::SingleResultHandler;
+    int nt = std::min(int(nx), omp_get_max_threads());
+
+#pragma omp parallel num_threads(nt)
+    {
+        SingleResultHandler resi(res);
+#pragma omp for
+        for (int64_t i = 0; i < nx; i++) {
+            const float* x_i = x + i * d;
+            resi.begin(i);
+
+            // the lambda that filters acceptable elements.
+            auto filter = [&selector](const size_t j) {
+                return selector.is_member(j);
+            };
+
+            // the lambda that applies a filtered element.
+            auto apply = [&resi](const float ip, const idx_t j) {
+                resi.add_result(ip, j);
+            };
+
+            // compute distances
+            fvec_minhash_jaccard_ny_if(x_i, y, d, ny, filter, apply);
+
+            resi.end();
+        }
+    }
+}
+
 template <class BlockResultHandler>
 void exhaustive_inner_product_seq(
         const float* __restrict x,
@@ -274,6 +315,45 @@ void exhaustive_inner_product_seq(
     // default case if no filter is needed or if it is empty
     IDSelectorAll helper;
     exhaustive_inner_product_seq_impl<BlockResultHandler, IDSelectorAll>(
+        x, y, d, nx, ny, res, helper);
+}
+
+template <class BlockResultHandler>
+void exhaustive_minhash_jaccard_seq(
+        const float* __restrict x,
+        const float* __restrict y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        BlockResultHandler& res,
+        const IDSelector* __restrict sel) {
+    // add different specialized cases here via introducing
+    //   helpers which are converted into templates.
+
+    // bitset.empty() translates into sel=nullptr
+
+    if (const auto* bitsetview_sel = dynamic_cast<const knowhere::BitsetViewIDSelector*>(sel)) {
+        // A specialized case for Knowhere
+        auto bitset = bitsetview_sel->bitset_view;
+        auto id_offset = bitsetview_sel->id_offset;
+        if (!bitset.empty()) {
+            BitsetViewSelectorHelper bitset_helper{bitset, id_offset};
+            exhaustive_minhash_jaccard_seq_impl<BlockResultHandler, BitsetViewSelectorHelper>(
+                x, y, d, nx, ny, res, bitset_helper);
+            return;
+        }
+    }
+    else if (sel != nullptr) {
+        // default Faiss case if sel is defined
+        IDSelectorHelper ids_helper{sel};
+        exhaustive_minhash_jaccard_seq_impl<BlockResultHandler, IDSelectorHelper>(
+            x, y, d, nx, ny, res, ids_helper);
+        return;
+    }
+
+    // default case if no filter is needed or if it is empty
+    IDSelectorAll helper;
+    exhaustive_minhash_jaccard_seq_impl<BlockResultHandler, IDSelectorAll>(
         x, y, d, nx, ny, res, helper);
 }
 
@@ -860,6 +940,23 @@ void knn_inner_product_select(
 }
 
 template <class BlockResultHandler>
+void knn_minhash_jaccard_select(
+        const float* x,
+        const float* y,
+        size_t d,
+        size_t nx,
+        size_t ny,
+        BlockResultHandler& res,
+        const IDSelector* sel) {
+    if (sel) {
+        exhaustive_minhash_jaccard_seq<BlockResultHandler>(
+                x, y, d, nx, ny, res, sel);
+    } else {
+        exhaustive_minhash_jaccard_seq<BlockResultHandler>(x, y, d, nx, ny, res, nullptr);
+    }
+}
+
+template <class BlockResultHandler>
 void knn_cosine_select(
         const float* x,
         const float* y,
@@ -888,6 +985,54 @@ int distance_compute_blas_threshold = 16384;
 int distance_compute_blas_query_bs = 4096;
 int distance_compute_blas_database_bs = 1024;
 int distance_compute_min_k_reservoir = 100;
+
+void knn_minhash_jacarrd(
+    const float* x,
+    const float* y,
+    size_t d,
+    size_t nx,
+    size_t ny,
+    size_t k,
+    float* vals,
+    int64_t* ids,
+    const IDSelector* sel) {
+        int64_t imin = 0;
+        if (auto selr = dynamic_cast<const IDSelectorRange*>(sel)) {
+            imin = std::max(selr->imin, int64_t(0));
+            int64_t imax = std::min(selr->imax, int64_t(ny));
+            ny = imax - imin;
+            y += d * imin;
+            sel = nullptr;
+        }
+        // @cqy123456: later 
+        // if (auto sela = dynamic_cast<const IDSelectorArray*>(sel)) {
+        //    knn_inner_products_by_idx(
+        //            x, y, sela->ids, d, nx, ny, sela->n, k, vals, ids, 0);
+        //    return;
+        //}
+
+        // // todo aguzhva: this is disabled for knowhere, because it requires 
+        // //   some dynamic kernel dispatching.
+        // if (k == 1) {
+        //     Top1BlockResultHandler<CMin<float, int64_t>> res(nx, vals, ids);
+        //     knn_inner_product_select(x, y, d, nx, ny, res, sel);
+        // } else 
+        if (k < distance_compute_min_k_reservoir) {
+            HeapBlockResultHandler<CMin<float, int64_t>> res(nx, vals, ids, k);
+            knn_minhash_jaccard_select(x, y, d, nx, ny, res, sel);
+        } else {
+            ReservoirBlockResultHandler<CMin<float, int64_t>> res(nx, vals, ids, k);
+            knn_minhash_jaccard_select(x, y, d, nx, ny, res, sel);
+        }
+
+        if (imin != 0) {
+            for (size_t i = 0; i < nx * k; i++) {
+                if (ids[i] >= 0) {
+                    ids[i] += imin;
+                }
+            }
+        }
+}
 
 void knn_inner_product(
         const float* x,

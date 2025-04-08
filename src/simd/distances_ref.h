@@ -26,6 +26,10 @@ fvec_L2sqr_ref(const float* x, const float* y, size_t d);
 float
 fvec_inner_product_ref(const float* x, const float* y, size_t d);
 
+/// jaccard distance of min hash 
+float
+fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d);
+
 /// L1 distance
 float
 fvec_L1_ref(const float* x, const float* y, size_t d);
@@ -83,6 +87,10 @@ fvec_inner_product_batch_4_ref(const float* x, const float* y0, const float* y1,
 void
 fvec_L2sqr_batch_4_ref(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
                        const size_t d, float& dis0, float& dis1, float& dis2, float& dis3);
+
+void
+fvec_minhash_jaccard_batch_4_ref(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
+                        const size_t d, float& dis0, float& dis1, float& dis2, float& dis3);
 
 ///////////////////////////////////////////////////////////////////////////////
 // for hnsw sq, obsolete

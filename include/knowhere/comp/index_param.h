@@ -190,6 +190,7 @@ namespace metric {
 constexpr const char* IP = "IP";
 constexpr const char* L2 = "L2";
 constexpr const char* COSINE = "COSINE";
+constexpr const char* MHJACCARD = "MHJACCARD";
 constexpr const char* HAMMING = "HAMMING";
 constexpr const char* JACCARD = "JACCARD";
 constexpr const char* SUBSTRUCTURE = "SUBSTRUCTURE";

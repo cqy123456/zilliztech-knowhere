@@ -61,6 +61,13 @@ check_search_with_buf(const knowhere::DataSetPtr train_ds, const knowhere::DataS
         } else {
             REQUIRE(std::abs(dist[i * k] - 1.0) < 0.00001);
         }
+        if (metric == knowhere::metric::MHJACCARD) {
+            std::cout <<"cqy check:"<<std::endl;
+            for (auto j = 0; j < k; j++) {
+                std::cout <<ids[i *j] <<" "<<dist[i *j]<<std::endl;
+            }
+        }
+
     }
     delete[] ids;
     delete[] dist;
@@ -273,4 +280,26 @@ TEST_CASE("Test Brute Force with input ids", "[float vector]") {
     check_search_with_out_ids<knowhere::fp16>(nb, nq, dim, k, metric, conf);
     check_search_with_out_ids<knowhere::bf16>(nb, nq, dim, k, metric, conf);
     check_search_with_out_ids<knowhere::int8>(nb, nq, dim, k, metric, conf);
+}
+
+TEST_CASE("Test Brute Force with minhash jaccard metric", "[float vector]") {
+    using Catch::Approx;
+
+    const int64_t nb = 1000;
+    const int64_t nq = 10;
+    const int64_t dim = 768;
+    const int64_t k = 10;
+
+    const auto metric = knowhere::metric::MHJACCARD;
+
+    const auto train_ds = GenDataSet(nb, dim);
+    const auto query_ds = CopyDataSet(train_ds, nq);
+
+    const knowhere::Json conf = {
+        {knowhere::meta::DIM, dim},
+        {knowhere::meta::METRIC_TYPE, metric},
+        {knowhere::meta::TOPK, k},
+    };
+
+    check_search_with_buf<knowhere::fp32>(train_ds, query_ds, k, metric, conf);
 }

@@ -14,7 +14,7 @@
 #include <cmath>
 
 #include "knowhere/operands.h"
-
+#include <iostream>
 namespace faiss {
 
 float
@@ -34,6 +34,15 @@ fvec_L2sqr_ref(const float* x, const float* y, size_t d) {
         res += tmp * tmp;
     }
     return res;
+}
+
+float
+fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d) {
+    float res = 0;
+    for (size_t i = 0; i < d; i++) {
+        res += (x[i] == y[i]);
+    }
+    return res / float(d);
 }
 
 float
@@ -177,6 +186,7 @@ fvec_inner_product_batch_4_ref(const float* __restrict x, const float* __restric
         d1 += x[i] * y1[i];
         d2 += x[i] * y2[i];
         d3 += x[i] * y3[i];
+
     }
 
     dis0 = d0;
@@ -194,6 +204,7 @@ fvec_L2sqr_batch_4_ref(const float* x, const float* y0, const float* y1, const f
         const float q0 = x[i] - y0[i];
         const float q1 = x[i] - y1[i];
         const float q2 = x[i] - y2[i];
+
         const float q3 = x[i] - y3[i];
         d0 += q0 * q0;
         d1 += q1 * q1;
@@ -205,6 +216,25 @@ fvec_L2sqr_batch_4_ref(const float* x, const float* y0, const float* y1, const f
     dis1 = d1;
     dis2 = d2;
     dis3 = d3;
+}
+
+
+void
+fvec_minhash_jaccard_batch_4_ref(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
+                       const size_t d, float& dis0, float& dis1, float& dis2, float& dis3) {
+    float d0 = 0, d1 = 0, d2 = 0, d3 = 0;
+
+    for (size_t i = 0; i < d; ++i) {
+        d0 += (x[i] == y0[i]);
+        d1 += (x[i] == y1[i]);
+        d2 += (x[i] == y2[i]);
+        d3 += (x[i] == y3[i]);
+    }
+
+    dis0 = d0 / float(d);
+    dis1 = d1 / float(d);
+    dis2 = d2 / float(d);
+    dis3 = d3 / float(d);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

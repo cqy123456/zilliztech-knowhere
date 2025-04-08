@@ -266,4 +266,5 @@ AlgorithmInterface<dist_t>::searchKnnCloserFirst(void* query_data, size_t k, con
 #include "space_ip.h"
 #include "space_jaccard.h"
 #include "space_l2.h"
+#include "space_mh_jaccard.h"
 #pragma GCC diagnostic pop

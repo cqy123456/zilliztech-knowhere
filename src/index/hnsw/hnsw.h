@@ -55,6 +55,8 @@ class HnswIndexNode : public IndexNode {
                 space = new (std::nothrow) hnswlib::InnerProductSpace<DataType, DistType>(dim);
             } else if (IsMetricType(hnsw_cfg.metric_type.value(), metric::COSINE)) {
                 space = new (std::nothrow) hnswlib::CosineSpace<DataType, DistType>(dim);
+            } else if (IsMetricType(hnsw_cfg.metric_type.value(), metric::MHJACCARD)) {
+                space = new (std::nothrow) hnswlib::MHJaccardSpace(dim);
             } else {
                 LOG_KNOWHERE_WARNING_
                     << "metric type and data type(float32, float16 and bfloat16) are not match in hnsw: "
@@ -222,7 +224,7 @@ class HnswIndexNode : public IndexNode {
 
         hnswlib::SearchParam param{(size_t)hnsw_cfg.ef.value()};
         bool transform =
-            (index_->metric_type_ == hnswlib::Metric::INNER_PRODUCT || index_->metric_type_ == hnswlib::Metric::COSINE);
+            (index_->metric_type_ == hnswlib::Metric::INNER_PRODUCT || index_->metric_type_ == hnswlib::Metric::COSINE || index_->metric_type_ == hnswlib::Metric::MHJACCARD);
 
         std::vector<folly::Future<folly::Unit>> futs;
         futs.reserve(nq);

@@ -43,6 +43,8 @@ enum MetricType {
     METRIC_NaNEuclidean = 24,
     /// abs(x | y): the distance to a hyperplane
     METRIC_ABS_INNER_PRODUCT = 25,
+    /// sum of (x & y) / dim: the jaccard distance of minhash expression
+    METRIC_MinHash_Jaccard = 26, 
 };
 
 /// all vector indices are this type
