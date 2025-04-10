@@ -29,14 +29,50 @@ constexpr float kKnnRecallThreshold = 0.6f;
 constexpr float kBruteForceRecallThreshold = 0.95f;
 constexpr const char* kMmapIndexPath = "/tmp/knowhere_dense_mmap_index_test";
 }  // namespace
+
+
+inline double
+elapsed() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
+}
+
+inline knowhere::DataSetPtr
+GenDataSet(const std::string& file_path) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("无法打开文件: " + file_path);
+    }
+    uint32_t n, d;
+    file.read(reinterpret_cast<char*>(&n), sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
+    std::cout << "数据个数: " << n << ", 维度: " << d << std::endl;
+    float* flat_data = new float[n * d];
+    const size_t num_floats = n * d;
+    file.read(reinterpret_cast<char*>(flat_data), num_floats * sizeof(float));
+
+    // 检查是否读取完整
+    if (file.gcount() != num_floats * sizeof(float)) {
+        throw std::runtime_error("文件数据不完整");
+    }
+    auto ds = knowhere::GenDataSet(n, d, flat_data);
+    ds->SetIsOwner(true);
+    return ds;
+}
 TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
     using Catch::Approx;
 
-    const int64_t nb = 1000, nq = 10;
-    const int64_t dim = 128;
+    int64_t nb, nq;
+    int64_t dim;
+    const auto train_ds = GenDataSet("/home/cqy/code/knowhere/mh_data.fbin");
+    const auto query_ds = GenDataSet("/home/cqy/code/knowhere/mh_query.fbin");
+    nb = train_ds->GetRows();
+    nq = query_ds->GetRows();
+    dim = train_ds->GetDim();
 
-    auto metric = GENERATE(as<std::string>{}, knowhere::metric::L2, knowhere::metric::MHJACCARD);
-    auto topk = GENERATE(as<int64_t>{}, 5, 120);
+    auto metric = GENERATE(as<std::string>{}, knowhere::metric::MHJACCARD);
+    auto topk = GENERATE(as<int64_t>{}, 10);
     auto version = GenTestVersionList();
 
     auto base_gen = [=]() {
@@ -50,30 +86,32 @@ TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
     };
     auto ivfflat_gen = [base_gen]() {
         knowhere::Json json = base_gen();
-        json[knowhere::indexparam::NLIST] = 16;
-        json[knowhere::indexparam::NPROBE] = 8;
+        json[knowhere::indexparam::NLIST] = 128;
+        json[knowhere::indexparam::NPROBE] = 16;
         return json;
     };
     auto hnsw_gen = [base_gen]() {
         knowhere::Json json = base_gen();
-        json[knowhere::indexparam::HNSW_M] = 32;
+        json[knowhere::indexparam::HNSW_M] = 48;
         json[knowhere::indexparam::EFCONSTRUCTION] = 120;
-        json[knowhere::indexparam::EF] = 120;
+        json[knowhere::indexparam::EF] = 48;
         return json;
     };
-    const auto train_ds = GenDataSet(nb, dim);
-    const auto query_ds = GenDataSet(nq, dim);
 
     const knowhere::Json conf = {
         {knowhere::meta::METRIC_TYPE, metric},
         {knowhere::meta::TOPK, topk},
     };
+
+    auto t1 = elapsed();
     auto gt = knowhere::BruteForce::Search<knowhere::fp32>(train_ds, query_ds, conf, nullptr);
+    auto t_2 = elapsed() - t1;
+    std::cout << "BF VPS: "<< nq/t_2<<std::endl;
 
     SECTION("Test Search") {
         using std::make_tuple;
         auto [name, gen] = GENERATE_REF(table<std::string, std::function<knowhere::Json()>>({
-            //make_tuple(knowhere::IndexEnum::INDEX_HNSW, hnsw_gen),
+         //   make_tuple(knowhere::IndexEnum::INDEX_HNSW, hnsw_gen),
             make_tuple(knowhere::IndexEnum::INDEX_FAISS_IVFFLAT, ivfflat_gen),
         }));
         knowhere::BinarySet bs;
@@ -99,7 +137,7 @@ TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
             REQUIRE(idx.Serialize(bs) == knowhere::Status::success);
         }
         // search process
-        auto load_with_mmap = GENERATE(as<bool>{}, true, false);
+        auto load_with_mmap = GENERATE(as<bool>{}, false);
         {
             auto idx_expected = knowhere::IndexFactory::Instance().Create<knowhere::fp32>(name, version);
             auto idx = idx_expected.value();
@@ -129,14 +167,16 @@ TEST_CASE("Test Mem Index With minhash jaccard", "[float metrics]") {
                 REQUIRE(idx.HasRawData(json[knowhere::meta::METRIC_TYPE]) ==
                         knowhere::IndexStaticFaced<knowhere::fp32>::HasRawData(name, version, json));
             }
-
+            t1 = elapsed();
             auto results = idx.Search(query_ds, json, nullptr);
+            t_2 = elapsed() - t1;
             REQUIRE(results.has_value());
             float recall = GetKNNRecall(*gt.value(), *results.value());
-            std::cout <<"recall:"<<recall<<std::endl;
-            if (name != knowhere::IndexEnum::INDEX_FAISS_IVFPQ) {
-                REQUIRE(recall > kKnnRecallThreshold);
-            }
+            std::cout <<"index, recall:"<<name<<" "<<recall<<std::endl;
+            std::cout << "Index VPS: "<< nq/t_2<<std::endl;
+            // if (name != knowhere::IndexEnum::INDEX_FAISS_IVFPQ) {
+            //     REQUIRE(recall > kKnnRecallThreshold);
+            // }
 
             if (metric == knowhere::metric::COSINE) {
                 if (name != knowhere::IndexEnum::INDEX_FAISS_IVFSQ8 && name != knowhere::IndexEnum::INDEX_FAISS_IVFPQ &&

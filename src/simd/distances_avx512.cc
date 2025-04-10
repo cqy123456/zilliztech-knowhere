@@ -75,6 +75,60 @@ fvec_L2sqr_avx512(const float* x, const float* y, size_t d) {
 FAISS_PRAGMA_IMPRECISE_FUNCTION_END
 
 float
+fvec_minhash_jaccard_avx512(const float* x, const float* y, size_t d) {
+    size_t diff_count = 0;
+    size_t i = 0;
+    for (; i + 16 <= d; i += 16) {
+        __m512 v1 = _mm512_loadu_ps(x + i);
+        __m512 v2 = _mm512_loadu_ps(y + i);
+        
+        __mmask16 mask = _mm512_cmp_ps_mask(v1, v2, _CMP_NEQ_OQ);
+        
+        diff_count += _mm_popcnt_u32(mask);
+    }
+    for (; i < d; i++) {
+        if (x[i] != y[i]) {
+            diff_count++;
+        }
+    }
+    return float(diff_count)/float(d);
+}
+
+void
+fvec_minhash_jaccard_batch_4_avx512(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
+                        const size_t d, float& dis0, float& dis1, float& dis2, float& dis3) {
+    dis0 = dis1 = dis2 = dis3 = 0;
+    size_t i = 0;
+    for (; i + 16 <= d; i += 16) {
+        __m512 v1 = _mm512_loadu_ps(x + i);
+        __m512 v2 = _mm512_loadu_ps(y0 + i);
+        __m512 v3 = _mm512_loadu_ps(y1 + i);
+        __m512 v4 = _mm512_loadu_ps(y2 + i);
+        __m512 v5 = _mm512_loadu_ps(y3 + i);
+        
+        __mmask16 mask1 = _mm512_cmp_ps_mask(v1, v2, _CMP_NEQ_OQ);
+        __mmask16 mask2 = _mm512_cmp_ps_mask(v1, v3, _CMP_NEQ_OQ);
+        __mmask16 mask3 = _mm512_cmp_ps_mask(v1, v4, _CMP_NEQ_OQ);
+        __mmask16 mask4 = _mm512_cmp_ps_mask(v1, v5, _CMP_NEQ_OQ);
+        
+        dis0 += _mm_popcnt_u32(mask1);
+        dis1 += _mm_popcnt_u32(mask2);
+        dis2 += _mm_popcnt_u32(mask3);
+        dis3 += _mm_popcnt_u32(mask4);
+    }
+    for (; i < d; i++) {
+        dis0 += x[i] == y1[i];
+        dis1 += x[i] == y1[i];
+        dis2 += x[i] == y2[i];
+        dis3 += x[i] == y3[i];
+    }
+    dis0 = dis0 /float(d);
+    dis1 = dis1 /float(d);
+    dis2 = dis2 /float(d);
+    dis3 = dis3 /float(d);
+}
+
+float
 fvec_L1_avx512(const float* x, const float* y, size_t d) {
     __m512 msum0 = _mm512_setzero_ps();
     __m512 signmask0 = __m512(_mm512_set1_epi32(0x7fffffffUL));

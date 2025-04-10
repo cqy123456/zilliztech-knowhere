@@ -26,6 +26,7 @@
 #include <faiss/utils/distances.h>
 #include <faiss/utils/random.h>
 #include <faiss/utils/utils.h>
+#include <iostream>
 
 namespace faiss {
 
@@ -640,7 +641,9 @@ void Clustering::train_encoded(
 
             int nsplit = split_clusters(
                     d, k, nx, k_frozen, hassign.data(), centroids.data());
-
+            for (auto k_i = 0; k_i < k; k_i++) {
+                std::cout <<"c_i, num:"<<k_i<<" "<<hassign[k_i]<<std::endl;
+            }
             // collect statistics
             ClusteringIterationStats stats = {
                     obj,

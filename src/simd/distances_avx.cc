@@ -108,6 +108,88 @@ fvec_L2sqr_avx(const float* x, const float* y, size_t d) {
 }
 FAISS_PRAGMA_IMPRECISE_FUNCTION_END
 
+FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
+float
+fvec_minhash_jaccard_avx(const float* x, const float* y, size_t d) {
+    size_t i = 0;
+
+    // for (; i + 8 <= d; i += 8) {
+    //     __m256 v1 = _mm256_loadu_ps(x + i);
+    //     __m256 v2 = _mm256_loadu_ps(y + i);
+        
+    //     __m256 cmp = _mm256_cmp_ps(v1, v2, _CMP_NEQ_OQ);
+    
+    //     int mask = _mm256_movemask_ps(cmp);
+    //     diff_count += __builtin_popcount(mask); 
+    // }
+
+    // for (; i < d; i++) {
+    //     if (x[i] != y[i]) {
+    //         diff_count++;
+    //     }
+    // }
+    float res = 0;
+    FAISS_PRAGMA_IMPRECISE_LOOP
+    for (size_t i = 0; i < d; i++) {
+        res += x[i] == y[i];
+    }
+    return float(res)/float(d);
+}
+FAISS_PRAGMA_IMPRECISE_FUNCTION_END
+
+// void
+// fvec_minhash_jaccard_batch_4_avx(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
+//                         const size_t d, float& dis0, float& dis1, float& dis2, float& dis3) {
+//     dis0 = dis1 = dis2 = dis3 = 0;
+//     size_t i = 0;
+//     for (; i + 8 <= d; i += 8) {
+//         __m256 v1 = _mm256_loadu_ps(x + i);
+//         __m256 v2 = _mm256_loadu_ps(y0 + i);
+//         __m256 v3 = _mm256_loadu_ps(y1 + i);
+//         __m256 v4 = _mm256_loadu_ps(y2 + i);
+//         __m256 v5 = _mm256_loadu_ps(y3 + i);
+        
+//         __m256 cmp1 = _mm256_cmp_ps(v1, v2, _CMP_NEQ_OQ);
+//         __m256 cmp2 = _mm256_cmp_ps(v1, v3, _CMP_NEQ_OQ);
+//         __m256 cmp3 = _mm256_cmp_ps(v1, v4, _CMP_NEQ_OQ);
+//         __m256 cmp4 = _mm256_cmp_ps(v1, v5, _CMP_NEQ_OQ);
+
+//         dis0 += __builtin_popcount( _mm256_movemask_ps(cmp1)); 
+//         dis1 += __builtin_popcount( _mm256_movemask_ps(cmp2)); 
+//         dis2 += __builtin_popcount( _mm256_movemask_ps(cmp3)); 
+//         dis3 += __builtin_popcount( _mm256_movemask_ps(cmp4)); 
+//     }
+//     for (; i < d; i++) {
+//         dis0 += x[i] == y1[i];
+//         dis1 += x[i] == y1[i];
+//         dis2 += x[i] == y2[i];
+//         dis3 += x[i] == y3[i];
+//     }
+//     dis0 = dis0 /float(d);
+//     dis1 = dis1 /float(d);
+//     dis2 = dis2 /float(d);
+//     dis3 = dis3 /float(d);                    
+// }
+
+FAISS_PRAGMA_IMPRECISE_FUNCTION_BEGIN
+void
+fvec_minhash_jaccard_batch_4_avx(const float* x, const float* y0, const float* y1, const float* y2, const float* y3,
+                        const size_t d, float& dis0, float& dis1, float& dis2, float& dis3) {
+    dis0 = dis1 = dis2 = dis3 = 0;
+    FAISS_PRAGMA_IMPRECISE_LOOP
+    for (size_t i = 0; i < d; ++i) {
+        dis0 += x[i] == y0[i];
+        dis1 += x[i] == y1[i];
+        dis2 += x[i] == y2[i];
+        dis3 += x[i] == y3[i];
+    }
+    dis0 = dis0 /float(d);
+    dis1 = dis1 /float(d);
+    dis2 = dis2 /float(d);
+    dis3 = dis3 /float(d);                    
+}
+FAISS_PRAGMA_IMPRECISE_FUNCTION_END
+
 float
 fvec_L1_avx(const float* x, const float* y, size_t d) {
     __m256 msum1 = _mm256_setzero_ps();

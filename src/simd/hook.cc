@@ -220,6 +220,7 @@ fvec_hook(std::string& simd_type) {
         fvec_L2sqr = fvec_L2sqr_avx512;
         fvec_L1 = fvec_L1_avx512;
         fvec_Linf = fvec_Linf_avx512;
+        fvec_minhash_jaccard = fvec_minhash_jaccard_avx512;
 
         fvec_norm_L2sqr = fvec_norm_L2sqr_avx512;
         fvec_L2sqr_ny = fvec_L2sqr_ny_avx;
@@ -230,6 +231,7 @@ fvec_hook(std::string& simd_type) {
         fvec_inner_product_batch_4 = fvec_inner_product_batch_4_avx512;
         fvec_L2sqr_batch_4 = fvec_L2sqr_batch_4_avx512;
         fvec_L2sqr_ny_nearest = fvec_L2sqr_ny_nearest_avx;  // avx2 compute small dim faster than avx512
+        fvec_minhash_jaccard_batch_4 = fvec_minhash_jaccard_batch_4_avx512;
 
         // for hnsw sq, obsolete
         ivec_inner_product = ivec_inner_product_avx512;
@@ -267,6 +269,7 @@ fvec_hook(std::string& simd_type) {
         fvec_L2sqr = fvec_L2sqr_avx;
         fvec_L1 = fvec_L1_avx;
         fvec_Linf = fvec_Linf_avx;
+     //  fvec_minhash_jaccard = fvec_minhash_jaccard_avx;
 
         fvec_norm_L2sqr = fvec_norm_L2sqr_avx;
         fvec_L2sqr_ny = fvec_L2sqr_ny_avx;
@@ -277,6 +280,7 @@ fvec_hook(std::string& simd_type) {
         fvec_inner_product_batch_4 = fvec_inner_product_batch_4_avx;
         fvec_L2sqr_batch_4 = fvec_L2sqr_batch_4_avx;
         fvec_L2sqr_ny_nearest = fvec_L2sqr_ny_nearest_avx;
+    //    fvec_minhash_jaccard_batch_4 = fvec_minhash_jaccard_batch_4_avx;
 
         // for hnsw sq, obsolete
         ivec_inner_product = ivec_inner_product_avx;
