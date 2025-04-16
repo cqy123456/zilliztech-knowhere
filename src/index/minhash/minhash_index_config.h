@@ -37,16 +37,16 @@ class MinHashConfig : public BaseConfig {
         KNOWHERE_CONFIG_DECLARE_FIELD(enable_mmap)
             .description("hash code is mmap mdode.")
             .set_default(false)
-            .for_train();
+            .for_deserialize();
         KNOWHERE_CONFIG_DECLARE_FIELD(shared_bloom_filter)
             .description("whether to use one bloom filter for all band")
             .set_default(false)
-            .for_train();
+            .for_deserialize();
         KNOWHERE_CONFIG_DECLARE_FIELD(bloom_false_positive_prob)
             .description("whether to use one bloom filter for all band")
             .set_default(0.01)
             .set_range(0.0, 1.0)
-            .for_train();
+            .for_deserialize();
     }
 };
 }  // namespace knowhere

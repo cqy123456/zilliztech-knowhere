@@ -16,6 +16,7 @@
 #include "io/file_io.h"
 #include "io/memory_io.h"
 #include "knowhere/comp/bloomfilter.h"
+#include "knowhere/comp/thread_pool.h"
 #include "knowhere/expected.h"
 #include "knowhere/log.h"
 #include "knowhere/utils.h"
@@ -119,6 +120,7 @@ class MinHashIndex {
 // todo: thread pool version
 namespace {
 constexpr int MMAP_IO_FLAGS = MAP_POPULATE | MAP_SHARED;
+constexpr int kBatch = 4096;
 inline KeyType
 caculate_hash(const float* data, size_t dim, size_t band) {
     auto sub_dim = dim / band;
@@ -142,22 +144,37 @@ std::shared_ptr<KVPair[]>
 gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) {
     auto res_kv = std::shared_ptr<KVPair[]>(new KVPair[band * rows]);
     auto sub_dim = dim / band;
-    for (size_t i = 0; i < rows; i++) {
-        const float* data_i = data + dim * i;
-        for (size_t j = 0; j < band; j++) {
-            KVPair kv = {hash_vec(data_i + j * sub_dim, sub_dim), i};
-            res_kv.get()[j * rows + i] = kv;
-        }
+    auto batch_num = (rows + kBatch - 1) / kBatch;
+    auto build_pool = ThreadPool::GetGlobalBuildThreadPool();
+    std::vector<folly::Future<folly::Unit>> futures;
+    for (size_t i = 0; i < batch_num; i++) {
+        futures.emplace_back(build_pool->push([&, idx = i]() {
+            auto beg_id = i * kBatch;
+            auto end_id = std::min((i + 1) * kBatch, rows);
+            for (size_t j = beg_id; j < end_id; j++) {
+                const float* data_j = data + dim * j;
+                for (size_t b = 0; b < band; b++) {
+                    KVPair kv = {hash_vec(data_j + b * sub_dim, sub_dim), j};
+                    res_kv.get()[b * rows + j] = kv;
+                }
+            }
+        }));
     }
+    WaitAllSuccess(futures);
     return res_kv;
 }
 
 void
 sort_kv(const std::shared_ptr<KVPair[]> kv_code, size_t rows, size_t band) {
+    auto build_pool = ThreadPool::GetGlobalBuildThreadPool();
+    std::vector<folly::Future<folly::Unit>> futures;
     for (size_t i = 0; i < band; i++) {
-        std::sort(kv_code.get() + rows * i, kv_code.get() + rows * (i + 1),
-                  [](const KVPair& a, const KVPair& b) { return a.Key < b.Key; });
+        futures.emplace_back(build_pool->push([&, idx = i]() {
+            std::sort(kv_code.get() + rows * idx, kv_code.get() + rows * (idx + 1),
+                      [](const KVPair& a, const KVPair& b) { return a.Key < b.Key; });
+        }));
     }
+    WaitAllSuccess(futures);
 }
 }  // namespace
 
@@ -224,12 +241,17 @@ MinHashBandIndex::Load(FileReader& reader, size_t rows, bool mmap_enable, BloomF
         reader.read(owned_data_.get(), block_size_ * block_num_);
         data_ = owned_data_.get();
     }
+    auto build_pool = ThreadPool::GetGlobalBuildThreadPool();
+    std::vector<folly::Future<folly::Unit>> futures;
     for (auto i = 0; i < block_num_; i++) {
-        KeyType* blk_i = reinterpret_cast<KeyType*>(data_ + block_size_ * i);
-        for (auto j = 0; j < num_in_a_blk_[i]; j++) {
-            bloom_filter.add(blk_i[j]);
-        }
+        futures.emplace_back(build_pool->push([&, idx = i]() {
+            KeyType* blk_i = reinterpret_cast<KeyType*>(data_ + block_size_ * idx);
+            for (auto j = 0; j < num_in_a_blk_[idx]; j++) {
+                bloom_filter.add(blk_i[j]);
+            }
+        }));
     }
+    WaitAllSuccess(futures);
 }
 ValueType
 MinHashBandIndex::Search(KeyType key) {
@@ -316,7 +338,7 @@ MinHashIndex::Load(MinHashIndexLoadParams* params) {
     } else {
         bloom_ = std::vector<BloomFilter<KeyType>>(band_, BloomFilter<KeyType>(ntotal_, params->false_positive_prob));
     }
-    for (auto i = 0; i < band_; i++) {
+    for (size_t i = 0; i < band_; i++) {
         reader.seek(band_index_ofs[i]);
         band_index_[i].Load(reader, ntotal_, params->enable_mmap, bloom_[i % bloom_.size()]);
     }
