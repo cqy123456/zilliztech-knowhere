@@ -55,18 +55,18 @@ class MinHashBandIndex {
     MinHashBandIndex() {
     }
     static size_t
-    FormatAndSave(faiss::BlockFileIOWriter& writer, const std::shared_ptr<KVPair[]> sorted_kv, const size_t block_size,
+    FormatAndSave(faiss::BlockFileIOWriter& writer, const KVPair* sorted_kv, const size_t block_size,
                   const size_t rows);
 
     Status
-    Load(FileReader& reader, size_t rows, char* mmap_data, BloomFilter<KeyType>& bloom_filter);
+    Load(FileReader& reader, size_t rows, char* mmap_data, BloomFilter<KeyType>& bloom_filter, bool print);
 
     std::vector<ValueType>
     Search(KeyType key, bool search_all);
 
     ~MinHashBandIndex() {
         if (mmap_enable_) {
-            munmap(data_, block_size_ * block_num_);
+            munmap(data_, block_size_ * blocks_num_);
         }
     }
 
@@ -75,7 +75,7 @@ class MinHashBandIndex {
     std::vector<KeyType> maxs_;
     std::vector<size_t> num_in_a_blk_;
     size_t block_size_;
-    size_t block_num_;
+    size_t blocks_num_;
     bool mmap_enable_ = false;
     char* data_ = nullptr;
     std::unique_ptr<char[]> owned_data_ = nullptr;
@@ -131,23 +131,17 @@ class MinHashIndex {
 namespace {
 constexpr int MMAP_IO_FLAGS = MAP_POPULATE | MAP_SHARED;
 constexpr int kBatch = 4096;
+const size_t FNV_prime = 16777619;
 inline KeyType
 caculate_hash(const float* data, size_t dim, size_t band, size_t band_i) {
     auto sub_dim = dim / band;
-    return hash_vec(data + sub_dim * band_i, sub_dim);
-}
-inline int
-find_hash_key(const KeyType* hash_arr, const size_t n, const uint64_t key) {
-    if (n < 256) {
-        auto result = std::lower_bound(hash_arr, hash_arr + n, key);
-        if (result != hash_arr + n) {
-            return result - hash_arr;
-        } else {
-            return -1;
-        }
-    } else {
-        return faiss::binary_search(hash_arr, n, key);
+    const int start = band_i * sub_dim;
+    size_t hash = 2166136261;
+    for (int i = 0; i < sub_dim; ++i) {
+        hash ^= static_cast<size_t>(data[start + i]);
+        hash *= FNV_prime;
     }
+    return hash;
 }
 
 std::shared_ptr<KVPair[]>
@@ -164,7 +158,7 @@ gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) 
             for (size_t j = beg_id; j < end_id; j++) {
                 const float* data_j = data + dim * j;
                 for (size_t b = 0; b < band; b++) {
-                    KVPair kv = {hash_vec(data_j + b * sub_dim, sub_dim), j};
+                    KVPair kv = {caculate_hash(data_j, dim, band, b), j};
                     res_kv.get()[b * rows + j] = kv;
                 }
             }
@@ -189,8 +183,8 @@ sort_kv(const std::shared_ptr<KVPair[]> kv_code, size_t rows, size_t band) {
 }  // namespace
 
 size_t
-MinHashBandIndex::FormatAndSave(faiss::BlockFileIOWriter& writer, const std::shared_ptr<KVPair[]> sorted_kv,
-                                const size_t block_size, const size_t rows) {
+MinHashBandIndex::FormatAndSave(faiss::BlockFileIOWriter& writer, const KVPair* sorted_kv, const size_t block_size,
+                                const size_t rows) {
     size_t max_num_of_a_block = block_size / sizeof(KVPair);
     size_t blocks_num = (rows + max_num_of_a_block - 1) / max_num_of_a_block;
     std::vector<KeyType> mins;
@@ -199,17 +193,17 @@ MinHashBandIndex::FormatAndSave(faiss::BlockFileIOWriter& writer, const std::sha
     mins.resize(blocks_num);
     maxs.resize(blocks_num);
     num_in_a_blk.resize(blocks_num);
-    std::unique_ptr<KeyType[]> block_key_buf = std::make_unique<KeyType[]>(blocks_num);
-    std::unique_ptr<ValueType[]> block_val_buf = std::make_unique<ValueType[]>(blocks_num);
+    std::unique_ptr<KeyType[]> block_key_buf = std::make_unique<KeyType[]>(max_num_of_a_block);
+    std::unique_ptr<ValueType[]> block_val_buf = std::make_unique<ValueType[]>(max_num_of_a_block);
     writer.flush();
-    size_t data_pos = writer.get_current_block_id();
+    size_t data_pos = writer.tellg();
     for (size_t i = 0; i < blocks_num; i++) {
         writer.flush();
         auto beg = i * max_num_of_a_block;
         auto end = std::min((i + 1) * max_num_of_a_block, rows);
         num_in_a_blk[i] = end - beg;
         mins[i] = sorted_kv[beg].Key;
-        maxs[i] = sorted_kv[end].Key;
+        maxs[i] = sorted_kv[end - 1].Key;
         for (auto j = 0; j < num_in_a_blk[i]; j++) {
             block_key_buf[j] = sorted_kv[beg + j].Key;
             block_val_buf[j] = sorted_kv[beg + j].Value;
@@ -230,28 +224,29 @@ MinHashBandIndex::FormatAndSave(faiss::BlockFileIOWriter& writer, const std::sha
 }
 
 Status
-MinHashBandIndex::Load(FileReader& reader, size_t rows, char* mmap_data, BloomFilter<KeyType>& bloom_filter) {
+MinHashBandIndex::Load(FileReader& reader, size_t rows, char* mmap_data, BloomFilter<KeyType>& bloom_filter,
+                       bool print) {
     size_t data_pos;
-    readBinaryPOD(reader, this->block_num_);
+    readBinaryPOD(reader, this->blocks_num_);
     readBinaryPOD(reader, this->block_size_);
     readBinaryPOD(reader, data_pos);
-    mins_.resize(block_num_);
-    maxs_.resize(block_num_);
-    num_in_a_blk_.resize(block_num_);
+    mins_.resize(blocks_num_);
+    maxs_.resize(blocks_num_);
+    num_in_a_blk_.resize(blocks_num_);
     reader.read((char*)mins_.data(), mins_.size() * sizeof(KeyType));
     reader.read((char*)maxs_.data(), maxs_.size() * sizeof(KeyType));
     reader.read((char*)num_in_a_blk_.data(), num_in_a_blk_.size() * sizeof(size_t));
     if (mmap_data) {
         data_ = mmap_data + data_pos;
     } else {
-        owned_data_ = std::make_unique<char[]>(block_size_ * block_num_);
+        owned_data_ = std::make_unique<char[]>(block_size_ * blocks_num_);
         reader.seek(data_pos);
-        reader.read(owned_data_.get(), block_size_ * block_num_);
+        reader.read(owned_data_.get(), block_size_ * blocks_num_);
         data_ = owned_data_.get();
     }
     auto build_pool = ThreadPool::GetGlobalBuildThreadPool();
     std::vector<folly::Future<folly::Unit>> futures;
-    for (auto i = 0; i < block_num_; i++) {
+    for (auto i = 0; i < blocks_num_; i++) {
         futures.emplace_back(build_pool->push([&, idx = i]() {
             KeyType* blk_i = reinterpret_cast<KeyType*>(data_ + block_size_ * idx);
             for (auto j = 0; j < num_in_a_blk_[idx]; j++) {
@@ -264,18 +259,19 @@ MinHashBandIndex::Load(FileReader& reader, size_t rows, char* mmap_data, BloomFi
 }
 std::vector<ValueType>
 MinHashBandIndex::Search(KeyType key, bool more_res) {
-    auto block_id = find_hash_key(mins_.data(), mins_.size(), key);
-    if (block_id == -1 || key > maxs_[block_id]) {
+    auto block_id = faiss::binary_search_ge(maxs_.data(), maxs_.size(), key);
+    if (block_id == -1 || key < mins_[block_id]) {
         return {-1};
     }
     auto rows = num_in_a_blk_[block_id];
     KeyType* blk_k = reinterpret_cast<KeyType*>(data_ + block_size_ * block_id);
     ValueType* blk_v = reinterpret_cast<ValueType*>(data_ + block_size_ * block_id + rows * sizeof(KeyType));
-    auto inner_id = find_hash_key(blk_k, rows, key);
+    auto inner_id = faiss::binary_search_eq(blk_k, rows, key);
+
     if (inner_id == -1) {
-        return std::vector<ValueType>({-1});
+        return {-1};
     } else if (more_res == false) {
-        return std::vector<ValueType>(blk_v[inner_id]);
+        return {blk_v[inner_id]};
     } else {
         std::vector<ValueType> res;
         for (; inner_id < rows; inner_id++) {
@@ -315,7 +311,8 @@ MinHashIndex::BuildAndSave(MinHashIndexBuildParams* params) {
     }
     std::vector<size_t> band_index_ofs(band_index_n);
     for (size_t index_i = 0; index_i < band_index_n; index_i++) {
-        band_index_ofs[index_i] = MinHashBandIndex::FormatAndSave(writer, total_kv_pair, block_size, ntotal);
+        band_index_ofs[index_i] =
+            MinHashBandIndex::FormatAndSave(writer, total_kv_pair.get() + index_i * ntotal, block_size, ntotal);
     }
 
     // write file header
@@ -381,7 +378,7 @@ MinHashIndex::Load(MinHashIndexLoadParams* params) {
     auto band_mmap_addr = params->hash_code_in_memory ? nullptr : this->mmap_data_;
     for (size_t i = 0; i < band_; i++) {
         reader.seek(band_index_ofs[i]);
-        band_index_[i].Load(reader, ntotal_, band_mmap_addr, bloom_[i % bloom_.size()]);
+        band_index_[i].Load(reader, ntotal_, band_mmap_addr, bloom_[i % bloom_.size()], i == 0);
     }
     is_loaded_ = true;
     return Status::success;
@@ -397,23 +394,15 @@ MinHashIndex::Search(const float* query, float* distances, Idx* labels) {
         auto& bloom = bloom_[i % bloom_.size()];
         if (bloom.contains(hash)) {
             auto ids = band.Search(hash, with_raw_data_);
-            if (with_raw_data_) {
-                for (auto& id : ids) {
-                    if (id != -1) {
-                        auto vec = raw_data_ + id * dim_;
-                        auto dis = faiss::fvec_minhash_jaccard(query, vec, dim_, band_);
-                        if (dis != 0) {
-                            *distances = 1;
-                            *labels = id;
-                            return;
-                        }
+            for (auto& id : ids) {
+                if (id != -1) {
+                    auto dis =
+                        with_raw_data_ ? faiss::fvec_minhash_jaccard(query, raw_data_ + id * dim_, dim_, band_) : 1;
+                    if (dis != 0) {
+                        *distances = 1;
+                        *labels = id;
+                        return;
                     }
-                }
-            } else {
-                if (ids.size() != 0 && ids[0] != -1) {
-                    *distances = 1;
-                    *labels = ids[0];
-                    return;
                 }
             }
         }

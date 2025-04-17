@@ -184,6 +184,10 @@ float
 fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d, size_t mh_d);
 
 int
-binary_search_ref(const uint64_t*, const size_t n, const uint64_t key);
+binary_search_eq_ref(const uint64_t*, const size_t n, const uint64_t key);
+int
+binary_search_ge_ref(const uint64_t*, const size_t n, const uint64_t key);
+int
+binary_search_lt_ref(const uint64_t*, const size_t n, const uint64_t key);
 
 }  // namespace faiss

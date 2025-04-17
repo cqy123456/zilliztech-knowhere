@@ -124,7 +124,9 @@ extern int (*rabitq_dp_popcnt)(const uint8_t*, const uint8_t*, const size_t, con
 
 // minhash
 extern float (*fvec_minhash_jaccard)(const float*, const float*, size_t, size_t);
-extern int (*binary_search)(const uint64_t*, const size_t n, const uint64_t key);
+extern int (*binary_search_eq)(const uint64_t*, const size_t n, const uint64_t key);
+extern int (*binary_search_ge)(const uint64_t*, const size_t n, const uint64_t key);
+extern int (*binary_search_lt)(const uint64_t*, const size_t n, const uint64_t key);
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(__x86_64__)
 bool

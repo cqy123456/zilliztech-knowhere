@@ -944,7 +944,7 @@ fvec_minhash_jaccard_avx512(const float* x, const float* y, size_t d, size_t mh_
 }
 
 int
-binary_search_avx512(const uint64_t* arr, const size_t size, const uint64_t key) {
+binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t key) {
     const __m512i vtarget = _mm512_set1_epi64(key);
     intptr_t low = 0;
     intptr_t high = static_cast<intptr_t>(size) - 1;
@@ -986,6 +986,45 @@ binary_search_avx512(const uint64_t* arr, const size_t size, const uint64_t key)
     }
     return -1;
 }
+int
+binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t target) {
+    constexpr int SIMD_WIDTH = 8;
+    const __m512i v_target = _mm512_set1_epi64(target);
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
 
+    while (left + SIMD_WIDTH - 1 <= right) {
+        int mid = left + (right - left) / 2;
+        mid = mid & ~(SIMD_WIDTH - 1);
+
+        __m512i v_data = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(&data[mid]));
+        __mmask8 ge_mask = _mm512_cmpge_epi64_mask(v_data, v_target);
+
+        if (ge_mask != 0) {
+            uint8_t mask = static_cast<uint8_t>(ge_mask);
+            int offset = 0;
+            while ((mask & 0x1) == 0) {
+                mask >>= 1;
+                offset++;
+            }
+            result = mid + offset;
+            right = mid - 1;
+        } else {
+            left = mid + SIMD_WIDTH;
+        }
+    }
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] >= target) {
+            result = mid;
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
+    }
+
+    return result;
+}
 }  // namespace faiss
 #endif

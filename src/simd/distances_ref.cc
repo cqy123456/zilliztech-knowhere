@@ -584,12 +584,56 @@ fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d, size_t mh_d) 
     return 0.0;
 }
 int
-binary_search_ref(const uint64_t* arr, const size_t n, const uint64_t key) {
-    auto result = std::lower_bound(arr, arr + n, key);
-    if (result != arr + n) {
-        return result - arr;
-    } else {
-        return -1;
+binary_search_eq_ref(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] < target) {
+            left = mid + 1;
+        } else if (target < data[mid]) {
+            right = mid - 1;
+        } else {
+            result = mid;
+            right = mid - 1;
+        }
     }
+    return result;
+}
+int
+binary_search_ge_ref(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] >= target) {
+            result = mid;
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
+    }
+    return result;
+}
+int
+binary_search_lt_ref(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] < target) {
+            result = mid;
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return result;
 }
 }  // namespace faiss

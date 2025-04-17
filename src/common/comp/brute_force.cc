@@ -240,7 +240,7 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                 case faiss::METRIC_MinHash_Jaccard: {
                     size_t mh_d = cfg.band.value();
                     auto cur_query = (const float*)xq + dim * index;
-                    find_minhash_jaccard_hit((const float*)xb, cur_query, dim, mh_d, 1, cur_distances, cur_labels);
+                    find_minhash_jaccard_hit(cur_query, (const float*)xb, dim, mh_d, nb, cur_distances, cur_labels);
                     break;
                 }
                 case faiss::METRIC_Hamming: {
@@ -404,7 +404,7 @@ BruteForce::SearchWithBuf(const DataSetPtr base_dataset, const DataSetPtr query_
                 case faiss::METRIC_MinHash_Jaccard: {
                     size_t mh_d = cfg.band.value();
                     auto cur_query = (const float*)xq + dim * index;
-                    find_minhash_jaccard_hit((const float*)xb, cur_query, dim, mh_d, 1, cur_distances, cur_labels);
+                    find_minhash_jaccard_hit(cur_query, (const float*)xb, dim, mh_d, nb, cur_distances, cur_labels);
                     break;
                 }
                 case faiss::METRIC_Jaccard: {

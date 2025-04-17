@@ -32,8 +32,10 @@ error "Missing the <filesystem> header."
 #endif
 #include <fstream>
 namespace {
+const auto train_ds_path = "/home/cqy845003/knowhere/mh_data/mh_data.fbin";
+const auto query_ds_path = "/home/cqy845003/knowhere/mh_data/mh_query.fbin";
 std::string kDir = fs::current_path().string() + "/minhash_index_test";
-std::string kRawDataPath = kDir + "/raw_data";
+std::string kRawDataPath = train_ds_path;
 std::string kIndexDir = kDir + "/index";
 std::string kIndexPrefix = kIndexDir + "/minhash";
 
@@ -47,6 +49,28 @@ constexpr float kL2RangeAp = 0.9;
 constexpr float kIpRangeAp = 0.9;
 constexpr float kCosineRangeAp = 0.9;
 
+inline knowhere::DataSetPtr
+GenDataSet(const std::string& file_path) {
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("无法打开文件: " + file_path);
+    }
+    uint32_t n, d;
+    file.read(reinterpret_cast<char*>(&n), sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
+    std::cout << "数据个数: " << n << ", 维度: " << d << std::endl;
+    float* flat_data = new float[n * d];
+    const size_t num_floats = n * d;
+    file.read(reinterpret_cast<char*>(flat_data), num_floats * sizeof(float));
+
+    // 检查是否读取完整
+    if (file.gcount() != num_floats * sizeof(float)) {
+        throw std::runtime_error("文件数据不完整");
+    }
+    auto ds = knowhere::GenDataSet(n, d, flat_data);
+    ds->SetIsOwner(true);
+    return ds;
+}
 template <typename DataType>
 void
 WriteRawDataToDisk(const std::string data_path, const DataType* raw_data, const uint32_t num, const uint32_t dim) {
@@ -74,7 +98,6 @@ base_search() {
 
     auto base_gen = [&metric_str]() {
         knowhere::Json json;
-        json["dim"] = kDim;
         json["metric_type"] = metric_str;
         json["k"] = 1;
         return json;
@@ -84,16 +107,16 @@ base_search() {
         knowhere::Json json = base_gen();
         json["index_prefix"] = metric_dir_map[metric_str];
         json["data_path"] = kRawDataPath;
-        json["aligned_block_size"] = 2048;
-        json["band"] = 50;
-        json["with_raw_data"] = true;
+        json["aligned_block_size"] = 4096;
+        json["band"] = 60;
+        json["with_raw_data"] = false;
         return json;
     };
 
     auto deserialize_gen = [&base_gen, &metric_str, &metric_dir_map]() {
         knowhere::Json json = base_gen();
         json["index_prefix"] = metric_dir_map[metric_str];
-        json["hash_code_mmap"] = true;
+        json["hash_code_mmap"] = false;
         json["shared_bloom_filter"] = true;
         json["bloom_false_positive_prob"] = 0.01;
         return json;
@@ -104,17 +127,17 @@ base_search() {
         return json;
     };
 
-    auto fp32_query_ds = GenDataSet(kNumQueries, kDim);
+    // auto fp32_query_ds = GenDataSet(train_ds_path);
     knowhere::DataSetPtr knn_gt_ptr = nullptr;
     knowhere::DataSetPtr range_search_gt_ptr = nullptr;
-    auto fp32_base_ds = GenDataSet(kNumRows, kDim);
+    //   auto fp32_base_ds = GenDataSet(query_ds_path);
 
-    auto base_ds = knowhere::ConvertToDataTypeIfNeeded<DataType>(fp32_base_ds);
-    auto query_ds = knowhere::ConvertToDataTypeIfNeeded<DataType>(fp32_query_ds);
+    auto base_ds = GenDataSet(train_ds_path);
+    auto query_ds = GenDataSet(query_ds_path);
 
     {
         auto base_ptr = static_cast<const DataType*>(base_ds->GetTensor());
-        WriteRawDataToDisk<DataType>(kRawDataPath, base_ptr, kNumRows, kDim);
+        // WriteRawDataToDisk<DataType>(kRawDataPath, base_ptr, kNumRows, kDim);
 
         // generate the gt of knn search and range search
         auto base_json = base_gen();

@@ -106,7 +106,9 @@ decltype(rabitq_dp_popcnt) rabitq_dp_popcnt = rabitq_dp_popcnt_ref;
 
 // minhash
 decltype(fvec_minhash_jaccard) fvec_minhash_jaccard = fvec_minhash_jaccard_ref;
-decltype(binary_search) binary_search = binary_search_ref;
+decltype(binary_search_eq) binary_search_eq = binary_search_eq_ref;
+decltype(binary_search_ge) binary_search_ge = binary_search_ge_ref;
+decltype(binary_search_lt) binary_search_lt = binary_search_lt_ref;
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(__x86_64__)
 bool
@@ -281,7 +283,8 @@ fvec_hook(std::string& simd_type) {
         }
         // minhash
         fvec_minhash_jaccard = fvec_minhash_jaccard_avx512;
-        binary_search = binary_search_avx512;
+        binary_search_eq = binary_search_eq_avx512;
+        binary_search_ge = binary_search_ge_avx512;
 
         //
         simd_type = "AVX512";
