@@ -178,6 +178,7 @@ MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Conf
     }
     index_params->index_file_path = build_conf.index_prefix.value();
     index_params->block_size = build_conf.aligned_block_size.value();
+    index_params->has_raw_data = build_conf.with_raw_data.value();
     size_t dim, rows;
     diskann::get_bin_metadata(build_conf.data_path.value(), rows, dim);
     index_params->band = build_conf.band.has_value() ? build_conf.band.value() : dim;
@@ -194,7 +195,7 @@ MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr
     auto load_conf = static_cast<const MinHashConfig&>(*cfg);
     auto index_params = std::make_unique<MinHashIndexLoadParams>();
     index_params->index_file_path = load_conf.index_prefix.value();
-    index_params->enable_mmap = load_conf.enable_mmap.value();
+    index_params->hash_code_in_memory = load_conf.hash_code_in_mem.value();
     index_params->global_bloom_filter = load_conf.shared_bloom_filter.value();
     index_params->false_positive_prob = load_conf.bloom_false_positive_prob.value();
     if (!LoadFile(load_conf.index_prefix.value())) {

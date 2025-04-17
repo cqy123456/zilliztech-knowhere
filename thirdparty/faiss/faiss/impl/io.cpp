@@ -102,7 +102,6 @@ FileIOWriter::FileIOWriter(const char* fname) {
     FAISS_THROW_IF_NOT_FMT(
             f, "could not open %s for writing: %s", fname, strerror(errno));
     need_close = true;
-    std::cout <<"cqy:success init FileIOWriter with fname"<<fname<<" "<<uint64_t(f)<<std::endl;
 }
 
 FileIOWriter::~FileIOWriter() {
@@ -196,6 +195,7 @@ size_t BlockFileIOWriter::write_header(const char* ptr, size_t bytes) {
     fseek(f, 0, SEEK_SET);
     fwrite(ptr, sizeof(char), bytes, f);
     fseek(f, 0, SEEK_END);
+    return bytes;
 }
 
 /***********************************************************************

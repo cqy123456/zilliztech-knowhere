@@ -86,15 +86,16 @@ base_search() {
         json["data_path"] = kRawDataPath;
         json["aligned_block_size"] = 2048;
         json["band"] = 50;
-        json["shared_bloom_filter"] = true;
-        json["bloom_false_positive_prob"] = 0.1;
+        json["with_raw_data"] = true;
         return json;
     };
 
     auto deserialize_gen = [&base_gen, &metric_str, &metric_dir_map]() {
         knowhere::Json json = base_gen();
         json["index_prefix"] = metric_dir_map[metric_str];
-        json["enable_mmap"] = false;
+        json["hash_code_mmap"] = true;
+        json["shared_bloom_filter"] = true;
+        json["bloom_false_positive_prob"] = 0.01;
         return json;
     };
 
@@ -103,10 +104,10 @@ base_search() {
         return json;
     };
 
-    auto fp32_query_ds = GenDataSet(kNumQueries, kDim, 42);
+    auto fp32_query_ds = GenDataSet(kNumQueries, kDim);
     knowhere::DataSetPtr knn_gt_ptr = nullptr;
     knowhere::DataSetPtr range_search_gt_ptr = nullptr;
-    auto fp32_base_ds = GenDataSet(kNumRows, kDim, 30);
+    auto fp32_base_ds = GenDataSet(kNumRows, kDim);
 
     auto base_ds = knowhere::ConvertToDataTypeIfNeeded<DataType>(fp32_base_ds);
     auto query_ds = knowhere::ConvertToDataTypeIfNeeded<DataType>(fp32_query_ds);
@@ -155,6 +156,8 @@ base_search() {
             REQUIRE(res.has_value());
             std::cout << "compare recall" << std::endl;
             auto knn_recall = GetKNNRecall(*knn_gt_ptr, *res.value());
+
+            std::cout << "knn recall" << knn_recall << std::endl;
             REQUIRE(knn_recall > kKnnRecall);
         }
     }

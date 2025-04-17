@@ -192,6 +192,7 @@ constexpr const char* ALIGNED_BLOCK_SIZE = "aligned_block_size";
 constexpr const char* BAND = "band";
 constexpr const char* SHARED_BLOOM_FILTER = "shared_bloom_filter";
 constexpr const char* BLOOM_FALSE_POSITIVE_RPOB = "bloom_false_positive_prob";
+constexpr const char* HASH_CODE_IN_MEM = "hash_code_in_mem";
 }  // namespace indexparam
 
 using MetricType = std::string;

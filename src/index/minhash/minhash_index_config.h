@@ -20,7 +20,8 @@ class MinHashConfig : public BaseConfig {
  public:
     CFG_INT aligned_block_size;
     CFG_INT band;
-    CFG_BOOL enable_mmap;
+    CFG_BOOL hash_code_in_mem;
+    CFG_BOOL with_raw_data;
     CFG_BOOL shared_bloom_filter;
     CFG_FLOAT bloom_false_positive_prob;
     KNOHWERE_DECLARE_CONFIG(MinHashConfig) {
@@ -34,9 +35,13 @@ class MinHashConfig : public BaseConfig {
             .allow_empty_without_default()
             .set_range(1, std::numeric_limits<CFG_INT::value_type>::max())
             .for_train();
-        KNOWHERE_CONFIG_DECLARE_FIELD(enable_mmap)
-            .description("hash code is mmap mdode.")
+        KNOWHERE_CONFIG_DECLARE_FIELD(with_raw_data)
+            .description("the degree of the graph index.")
             .set_default(false)
+            .for_train();
+        KNOWHERE_CONFIG_DECLARE_FIELD(hash_code_in_mem)
+            .description("hash code is mmap mdode.")
+            .set_default(true)
             .for_deserialize();
         KNOWHERE_CONFIG_DECLARE_FIELD(shared_bloom_filter)
             .description("whether to use one bloom filter for all band")
