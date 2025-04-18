@@ -35,10 +35,10 @@ MinhashConfigCheck(const size_t dim, const DataFormatEnum data_type, const uint3
         }
     }
     if (fun_type & PARAM_TYPE::SEARCH) {
-        if (bitset != nullptr && !bitset->empty()) {
-            LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD not supported for bitset not empty case.";
-            return Status::not_implemented;
-        }
+        // if (bitset != nullptr && !bitset->empty()) {
+        //     LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD not supported for bitset not empty case.";
+        //     return Status::not_implemented;
+        // }
         size_t topk = cfg->k.value();
         if (topk != 1) {
             LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD not supported for topk != 1 case.";
