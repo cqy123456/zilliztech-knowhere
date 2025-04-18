@@ -165,6 +165,7 @@ class MinHashIndexNode : public IndexNode {
     std::unique_ptr<MinHashIndex> minhash_index_;
     std::shared_ptr<ThreadPool> search_pool_;
     bool is_loaded_ = false;
+    const std::string fname_ = "minhash_index";
 };
 template <typename DataType>
 Status
@@ -176,17 +177,21 @@ MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Conf
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
         return Status::disk_file_error;
     }
-    index_params->index_file_path = build_conf.index_prefix.value();
+    index_params->index_file_path = build_conf.index_prefix.value() + fname_;
     index_params->block_size = build_conf.aligned_block_size.value();
     index_params->has_raw_data = build_conf.with_raw_data.value();
     size_t dim, rows;
     diskann::get_bin_metadata(build_conf.data_path.value(), rows, dim);
     index_params->band = build_conf.band.has_value() ? build_conf.band.value() : dim;
+    auto build_stat = MinHashIndex::BuildAndSave(index_params.get());
+    if (build_stat != Status::success) {
+        return build_stat;
+    }
     if (!AddFile(index_params->index_file_path)) {
         LOG_KNOWHERE_ERROR_ << "Failed to add file " << index_params->index_file_path << ".";
         return Status::disk_file_error;
     }
-    return MinHashIndex::BuildAndSave(index_params.get());
+    return Status::success;
 }
 
 template <typename DataType>
@@ -194,11 +199,11 @@ Status
 MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr<Config> cfg) {
     auto load_conf = static_cast<const MinHashConfig&>(*cfg);
     auto index_params = std::make_unique<MinHashIndexLoadParams>();
-    index_params->index_file_path = load_conf.index_prefix.value();
+    index_params->index_file_path = load_conf.index_prefix.value() + fname_;
     index_params->hash_code_in_memory = load_conf.hash_code_in_mem.value();
     index_params->global_bloom_filter = load_conf.shared_bloom_filter.value();
     index_params->false_positive_prob = load_conf.bloom_false_positive_prob.value();
-    if (!LoadFile(load_conf.index_prefix.value())) {
+    if (!LoadFile(index_params->index_file_path)) {
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
         return Status::disk_file_error;
     }
@@ -221,7 +226,6 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
     auto search_conf = static_cast<const MinHashConfig&>(*cfg);
     auto stat = MinhashConfigCheck(dataset->GetDim(), DataFormatEnum::fp32, PARAM_TYPE::SEARCH, &search_conf, &bitset);
     if (stat != Status::success) {
-        std::cout << "checking MinhashConfigCheck fail" << std::endl;
         return expected<DataSetPtr>::Err(Status::invalid_args, "MinhashConfigCheck fail.");
     }
     auto nq = dataset->GetRows();
