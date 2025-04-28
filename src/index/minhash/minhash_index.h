@@ -21,7 +21,6 @@
 #include "knowhere/log.h"
 #include "knowhere/utils.h"
 #include "simd/hook.h"
-#include <immintrin.h>
 namespace knowhere {
 using Idx = int64_t;
 using KeyType = uint64_t;
