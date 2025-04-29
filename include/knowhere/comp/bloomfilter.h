@@ -17,6 +17,7 @@
 
 #include "io/memory_io.h"
 #include "knowhere/utils.h"
+#include "knowhere/bitsetview.h"
 namespace knowhere {
 template <typename T>
 class BloomFilter {
@@ -26,27 +27,27 @@ class BloomFilter {
     BloomFilter(size_t expected_elements, double false_positive_prob) : n(expected_elements), p(false_positive_prob) {
         m = static_cast<size_t>(-(n * log(p)) / (log(2) * log(2)));
         k = static_cast<int>(m / n * log(2));
-
         m = std::max<size_t>(m, 1);
         k = std::max(k, 1);
-        bits.resize(m, false);
+        bits.resize((m +7)/8, 0);
+
     }
 
     void
     add(const T& element) {
-        auto bytes = to_bytes(element);
+        size_t glb_hash =  hash((const char*)&element, sizeof(element), 0);
         for (int i = 0; i < k; ++i) {
-            size_t pos = hash(bytes, i);
-            bits[pos] = true;
+            size_t pos = (glb_hash + i) % m;
+            set_bit(pos);
         }
     }
 
     bool
     contains(const T& element) const {
-        auto bytes = to_bytes(element);
+        size_t glb_hash = hash((const char*)&element, sizeof(element), 0);
         for (int i = 0; i < k; ++i) {
-            size_t pos = hash(bytes, i);
-            if (!bits[pos])
+            size_t pos = (glb_hash + i) % m;
+            if (!count(pos))
                 return false;
         }
         return true;
@@ -71,10 +72,8 @@ class BloomFilter {
         readBinaryPOD(reader, k);
         readBinaryPOD(reader, n);
         readBinaryPOD(reader, p);
-
         bits.clear();
         bits.resize(m);
-
         for (size_t i = 0; i < m; ++i) {
             char byte;
             readBinaryPOD(reader, byte);
@@ -95,21 +94,29 @@ class BloomFilter {
     }
 
  private:
-    std::vector<bool> bits;
+    static constexpr size_t multiplier = 31; 
+    std::vector<uint8_t> bits;
     size_t m;
     int k;
     double p;
     size_t n;
-    // todo: handle nullptr
-    std::vector<unsigned char>
-    to_bytes(const T& data) const {
-        const unsigned char* byte_ptr = reinterpret_cast<const unsigned char*>(&data);
-        return std::vector<unsigned char>(byte_ptr, byte_ptr + sizeof(T));
+    void
+    set_bit(const int idx) {
+        bits[idx >> 3] |= 0x1 << (idx & 0x7);
     }
+    bool 
+    count(const int idx) const {
+        return bits[idx >> 3] & (0x1 << (idx & 0x7));
+    }
+
+    // todo: handle nullptr
     size_t
-    hash(const std::vector<unsigned char>& data, size_t i) const {
-        size_t hash = std::hash<std::string>{}(std::string(data.begin(), data.end())) + i;
-        return hash % m;
+    hash(const char* data, size_t length, size_t bucket_i) const {
+        size_t result = 0;
+        for (size_t i = 0; i < length; ++i) {
+            result = (result * multiplier) + static_cast<size_t>(data[i]);
+        }
+        return (result + bucket_i) % m;
     }
 };
 }  // namespace knowhere

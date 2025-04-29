@@ -123,7 +123,7 @@ GetKNNRecall(const knowhere::DataSet& ground_truth, const knowhere::DataSet& res
 
         std::sort(ids_0.begin(), ids_0.end());
         std::sort(ids_1.begin(), ids_1.end());
-        std::cout << "query dis" << ids_0[0] << " " << ids_1[0] << std::endl;
+       // std::cout << "query dis" << ids_0[0] << " " << ids_1[0] << std::endl;
 
         std::vector<int64_t> v(std::max(ids_0.size(), ids_1.size()));
         std::vector<int64_t>::iterator it;

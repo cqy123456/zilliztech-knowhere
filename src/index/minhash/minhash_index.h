@@ -21,6 +21,7 @@
 #include "knowhere/log.h"
 #include "knowhere/utils.h"
 #include "simd/hook.h"
+#include <immintrin.h>
 namespace knowhere {
 using Idx = int64_t;
 using KeyType = uint64_t;
@@ -94,6 +95,8 @@ class MinHashIndex {
     Load(MinHashIndexLoadParams* params);
     void
     Search(const float* query, float* distances, Idx* labels);
+    void 
+    BatchSearch(const float* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool);
     size_t
     Count() {
         return ntotal_;
@@ -131,18 +134,20 @@ class MinHashIndex {
 namespace {
 constexpr int MMAP_IO_FLAGS = MAP_POPULATE | MAP_SHARED;
 constexpr int kBatch = 4096;
-const size_t FNV_prime = 16777619;
-inline KeyType
-caculate_hash(const float* data, size_t dim, size_t band, size_t band_i) {
-    auto sub_dim = dim / band;
-    const int start = band_i * sub_dim;
-    size_t hash = 2166136261;
-    for (int i = 0; i < sub_dim; ++i) {
-        hash ^= static_cast<size_t>(data[start + i]);
-        hash *= FNV_prime;
-    }
-    return hash;
-}
+
+// inline KeyType
+// calculate_hash(const float* data, size_t dim, size_t band, size_t band_i) {
+// constexpr int kBatch = 4096;
+// const size_t FNV_prime = 16777619;
+//     auto sub_dim = dim / band;
+//     const int start = band_i * sub_dim;
+//     size_t hash = 2166136261;
+//     for (int i = 0; i < sub_dim; ++i) {
+//         hash ^= static_cast<size_t>(data[start + i]);
+//         hash *= FNV_prime;
+//     }
+//     return hash;
+// }
 
 std::shared_ptr<KVPair[]>
 gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) {
@@ -158,7 +163,7 @@ gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) 
             for (size_t j = beg_id; j < end_id; j++) {
                 const float* data_j = data + dim * j;
                 for (size_t b = 0; b < band; b++) {
-                    KVPair kv = {caculate_hash(data_j, dim, band, b), j};
+                    KVPair kv = {faiss::calculate_hash(data_j, dim, band, b), j};
                     res_kv.get()[b * rows + j] = kv;
                 }
             }
@@ -389,7 +394,7 @@ MinHashIndex::Search(const float* query, float* distances, Idx* labels) {
     *distances = 0;
     *labels = -1;
     for (auto i = 0; i < band_; i++) {
-        const auto hash = caculate_hash(query, dim_, band_, i);
+        const auto hash = faiss::calculate_hash(query, dim_, band_, i);
         auto& band = band_index_[i];
         auto& bloom = bloom_[i % bloom_.size()];
         if (bloom.contains(hash)) {
@@ -407,6 +412,50 @@ MinHashIndex::Search(const float* query, float* distances, Idx* labels) {
             }
         }
     }
+    return;
+}
+
+void
+MinHashIndex::BatchSearch(const float* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool) {
+    std::vector<std::vector<KVPair>> q_band_hash(band_, std::vector<KVPair>());
+    for (auto i = 0; i < nq; i++) {
+        distances[i] = 0;
+        labels[i] = -1;
+        for (auto j = 0; j < band_; j++) {
+            auto hash = faiss::calculate_hash(query + i * dim_, dim_, band_, j);
+            if (bloom_[j % bloom_.size()].contains(hash)) {
+                q_band_hash[j].emplace_back(KVPair{hash,i});
+            }
+        }
+    }
+    std::vector<folly::Future<folly::Unit>> futures;
+    futures.reserve(band_);
+    for (size_t b_i = 0; b_i < band_; b_i++) {
+     //   std::cout<<"band i"<<b_i<<std::endl;
+        futures.emplace_back(pool->push([&, &band = band_index_[b_i], &q_kv_list = q_band_hash[b_i]]() {
+            for (auto& q_kv : q_kv_list) {
+              //  std::cout <<"q_kv:"<<q_kv.Value<<std::endl;
+                if (labels[q_kv.Value] != -1) continue;
+                auto hash = q_kv.Key; 
+                auto ids = band.Search(hash, with_raw_data_);
+              //  float dis;
+              //  Idx id;
+               // MinHashIndex::Search(query + dim_ * q_kv.Value, dis, id); 
+                for (auto& id : ids) {
+                    if (id != -1) {
+                        auto dis =
+                            with_raw_data_ ? faiss::fvec_minhash_jaccard(query + dim_ * q_kv.Value, raw_data_ + id * dim_, dim_, band_) : 1;
+                        if (dis != 0) {
+                            distances[q_kv.Value] = 1;
+                            labels[q_kv.Value] = id;
+                        }
+                    }
+                }
+            }
+            return;
+        }));
+    }
+    WaitAllSuccess(futures);
     return;
 }
 }  // namespace knowhere

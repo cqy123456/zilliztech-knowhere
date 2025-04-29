@@ -233,15 +233,24 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
     auto xq = static_cast<const float*>(dataset->GetTensor());
     auto p_id = std::make_unique<int64_t[]>(nq);
     auto p_dist = std::make_unique<DistType[]>(nq);
-    std::vector<folly::Future<folly::Unit>> futures;
-    futures.reserve(nq);
-    for (int64_t row = 0; row < nq; ++row) {
-        futures.emplace_back(search_pool_->push([&, index = row, p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
-            minhash_index_->Search(xq + (index * dim), p_dist_ptr + index, p_id_ptr + index);
-        }));
+    if (nq >= 10000000) {
+        minhash_index_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_);
+    } else {
+        std::vector<folly::Future<folly::Unit>> futures;
+        auto batch_size = 64;
+        auto run_time = (nq + batch_size -1 )/batch_size;
+        futures.reserve(nq);
+        for (int64_t row = 0; row < run_time; ++row) {
+            futures.emplace_back(search_pool_->push([&, beg = row * batch_size, end = std::min((row+1)*batch_size, nq), p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
+                for (auto index = beg; index < end; index++) {
+                    minhash_index_->Search(xq + (index * dim), p_dist_ptr + index, p_id_ptr + index);
+                }
+            }));
+        }
+        WaitAllSuccess(futures);
+       
     }
-    WaitAllSuccess(futures);
-    auto res = GenResultDataSet(nq, 1, std::move(p_id), std::move(p_dist));
+    auto res = GenResultDataSet(nq, 1, std::move(p_id), std::move(p_dist));   
     return res;
 }
 // hack, fp16/bf16 not work

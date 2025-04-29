@@ -127,6 +127,7 @@ extern float (*fvec_minhash_jaccard)(const float*, const float*, size_t, size_t)
 extern int (*binary_search_eq)(const uint64_t*, const size_t n, const uint64_t key);
 extern int (*binary_search_ge)(const uint64_t*, const size_t n, const uint64_t key);
 extern int (*binary_search_lt)(const uint64_t*, const size_t n, const uint64_t key);
+extern uint64_t (*calculate_hash)(const float* data, size_t dim, size_t band, size_t band_i);
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(__x86_64__)
 bool

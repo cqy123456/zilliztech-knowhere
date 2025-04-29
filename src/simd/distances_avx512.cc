@@ -1026,5 +1026,50 @@ binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t 
 
     return result;
 }
+uint64_t calculate_hash_avx512(const float* data, size_t dim, size_t band, size_t band_i) {
+    const size_t sub_dim = dim / band;
+    const size_t start = band_i * sub_dim;
+
+    // FNV-1a 哈希参数
+    constexpr size_t FNV_prime = 16777619;
+    constexpr size_t FNV_offset_basis = 2166136261;
+
+    // 初始化哈希值
+    __m512i vhash = _mm512_set1_epi32(FNV_offset_basis);
+
+    // 计算 sub_dim 的 AVX-512 处理部分（每次处理 16 个 float）
+    const size_t avx512_loop_size = sub_dim & ~15;  // 确保是 16 的倍数
+    for (size_t i = 0; i < avx512_loop_size; i += 16) {
+        // 加载 16 个 float
+        __m512 vdata = _mm512_loadu_ps(&data[start + i]);
+
+        // 将 float 转换为 uint32（假设数据范围适合）
+        __m512i vint_data = _mm512_cvtps_epi32(vdata);
+
+        // FNV-1a 哈希计算：
+        // hash ^= data[i];
+        vhash = _mm512_xor_epi32(vhash, vint_data);
+
+        // hash *= FNV_prime;
+        vhash = _mm512_mullo_epi32(vhash, _mm512_set1_epi32(FNV_prime));
+    }
+
+    // 合并 SIMD 哈希结果（横向 XOR）
+    size_t hash = FNV_offset_basis;
+    alignas(64) uint32_t hash_parts[16];
+    _mm512_store_epi32(hash_parts, vhash);
+
+    for (size_t i = 0; i < 16; ++i) {
+        hash ^= hash_parts[i];
+    }
+
+    // 处理剩余不足 16 的部分（如果有）
+    for (size_t i = avx512_loop_size; i < sub_dim; ++i) {
+        hash ^= static_cast<size_t>(data[start + i]);
+        hash *= FNV_prime;
+    }
+
+    return hash;
+}
 }  // namespace faiss
 #endif

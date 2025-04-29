@@ -636,4 +636,19 @@ binary_search_lt_ref(const uint64_t* data, const size_t size, const uint64_t tar
     }
     return result;
 }
+
+
+uint64_t
+calculate_hash_ref(const float* data, size_t dim, size_t band, size_t band_i) {
+constexpr int kBatch = 4096;
+const size_t FNV_prime = 16777619;
+    auto sub_dim = dim / band;
+    const int start = band_i * sub_dim;
+    size_t hash = 2166136261;
+    for (int i = 0; i < sub_dim; ++i) {
+        hash ^= static_cast<size_t>(data[start + i]);
+        hash *= FNV_prime;
+    }
+    return hash;
+}
 }  // namespace faiss

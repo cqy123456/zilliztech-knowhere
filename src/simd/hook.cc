@@ -109,6 +109,7 @@ decltype(fvec_minhash_jaccard) fvec_minhash_jaccard = fvec_minhash_jaccard_ref;
 decltype(binary_search_eq) binary_search_eq = binary_search_eq_ref;
 decltype(binary_search_ge) binary_search_ge = binary_search_ge_ref;
 decltype(binary_search_lt) binary_search_lt = binary_search_lt_ref;
+decltype(calculate_hash) calculate_hash = calculate_hash_ref;
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(__x86_64__)
 bool
@@ -285,7 +286,7 @@ fvec_hook(std::string& simd_type) {
         fvec_minhash_jaccard = fvec_minhash_jaccard_avx512;
         binary_search_eq = binary_search_eq_avx512;
         binary_search_ge = binary_search_ge_avx512;
-
+        calculate_hash = calculate_hash_avx512;
         //
         simd_type = "AVX512";
         support_pq_fast_scan = true;

@@ -153,4 +153,6 @@ int
 binary_search_eq_avx512(const uint64_t*, const size_t n, const uint64_t key);
 int
 binary_search_ge_avx512(const uint64_t*, const size_t n, const uint64_t key);
+
+uint64_t calculate_hash_avx512(const float* data, size_t dim, size_t band, size_t band_i);
 }  // namespace faiss
