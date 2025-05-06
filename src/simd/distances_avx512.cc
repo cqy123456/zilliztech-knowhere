@@ -1026,50 +1026,48 @@ binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t 
 
     return result;
 }
-uint64_t calculate_hash_avx512(const float* data, size_t dim, size_t band, size_t band_i) {
+inline uint64_t
+horizontal_sum(__m512i vec) {
+    uint64_t tmp[8];
+    _mm512_storeu_si512(reinterpret_cast<__m512i*>(tmp), vec);
+    uint64_t sum = 0;
+    for (int i = 0; i < 8; ++i) sum += tmp[i];
+    return sum;
+}
+
+uint64_t
+calculate_hash_avx512(const uint32_t* data, size_t dim, size_t band, size_t band_i) {
+    const uint64_t seed = 0xc70f6907UL;
     const size_t sub_dim = dim / band;
-    const size_t start = band_i * sub_dim;
+    const uint32_t* band_i_data = data + sub_dim * band_i;
+    uint64_t h = seed;
+    const size_t block_size = 8;
+    const size_t num_blocks = sub_dim / block_size;
+    const size_t remaining = sub_dim % block_size;
 
-    // FNV-1a 哈希参数
-    constexpr size_t FNV_prime = 16777619;
-    constexpr size_t FNV_offset_basis = 2166136261;
-
-    // 初始化哈希值
-    __m512i vhash = _mm512_set1_epi32(FNV_offset_basis);
-
-    // 计算 sub_dim 的 AVX-512 处理部分（每次处理 16 个 float）
-    const size_t avx512_loop_size = sub_dim & ~15;  // 确保是 16 的倍数
-    for (size_t i = 0; i < avx512_loop_size; i += 16) {
-        // 加载 16 个 float
-        __m512 vdata = _mm512_loadu_ps(&data[start + i]);
-
-        // 将 float 转换为 uint32（假设数据范围适合）
-        __m512i vint_data = _mm512_cvtps_epi32(vdata);
-
-        // FNV-1a 哈希计算：
-        // hash ^= data[i];
-        vhash = _mm512_xor_epi32(vhash, vint_data);
-
-        // hash *= FNV_prime;
-        vhash = _mm512_mullo_epi32(vhash, _mm512_set1_epi32(FNV_prime));
+    uint64_t pow_in_block[block_size];
+    pow_in_block[block_size - 1] = 1;
+    for (int i = block_size - 2; i >= 0; --i) {
+        pow_in_block[i] = pow_in_block[i + 1] * 13331;
     }
 
-    // 合并 SIMD 哈希结果（横向 XOR）
-    size_t hash = FNV_offset_basis;
-    alignas(64) uint32_t hash_parts[16];
-    _mm512_store_epi32(hash_parts, vhash);
+    uint64_t pow_block = 1;
+    for (size_t i = 0; i < block_size; ++i) pow_block *= 13331;
 
-    for (size_t i = 0; i < 16; ++i) {
-        hash ^= hash_parts[i];
+    __m512i vpow = _mm512_loadu_si512(pow_in_block);
+
+    for (size_t b = 0; b < num_blocks; ++b) {
+        __m256i vdata_u32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(band_i_data + b * block_size));
+        __m512i vdata = _mm512_cvtepu32_epi64(vdata_u32);
+        __m512i vcontrib = _mm512_mullo_epi64(vdata, vpow);
+        uint64_t sum = horizontal_sum(vcontrib);
+        h = h * pow_block + sum;
     }
 
-    // 处理剩余不足 16 的部分（如果有）
-    for (size_t i = avx512_loop_size; i < sub_dim; ++i) {
-        hash ^= static_cast<size_t>(data[start + i]);
-        hash *= FNV_prime;
+    for (size_t i = num_blocks * block_size; i < sub_dim; ++i) {
+        h = h * 13331 + band_i_data[i];
     }
-
-    return hash;
+    return h;
 }
 }  // namespace faiss
 #endif

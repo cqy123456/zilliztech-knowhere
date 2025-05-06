@@ -102,12 +102,32 @@ GetVecNorms(const DataSetPtr& base) {
     return norms;
 }
 
-void
-find_minhash_jaccard_hit(const float* x, const float* y, size_t d, size_t mh_d, size_t ny, float* vals, int64_t* ids) {
+template <typename T>
+inline float
+minhash_jaccard(const T* x, const T* y, size_t d, size_t mh_d) {
+    // checking d % mh_d == 0 at first
+    size_t mh_r = d / mh_d;
+    for (size_t i = 0; i < mh_d; i++) {
+        const T* x_i = x + mh_r * i;
+        const T* y_i = y + mh_r * i;
+        size_t j = 0;
+        for (; j < mh_r; j++) {
+            if (x_i[j] != y_i[j])
+                break;
+        }
+        if (j == mh_r)
+            return 1.0;
+    }
+    return 0.0;
+}
+
+template <typename T>
+inline void
+find_minhash_jaccard_hit(const T* x, const T* y, size_t d, size_t mh_d, size_t ny, float* vals, int64_t* ids) {
     *vals = 0;
     *ids = -1;
     for (size_t i = 0; i < ny; i++) {
-        auto hit = faiss::fvec_minhash_jaccard(x, y + d * i, d, mh_d);
+        auto hit = minhash_jaccard(x, y + d * i, d, mh_d);
         if (hit > 0.0) {
             *vals = hit;
             *ids = i;
@@ -239,8 +259,23 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                 }
                 case faiss::METRIC_MinHash_Jaccard: {
                     size_t mh_d = cfg.band.value();
-                    auto cur_query = (const float*)xq + dim * index;
-                    find_minhash_jaccard_hit(cur_query, (const float*)xb, dim, mh_d, nb, cur_distances, cur_labels);
+                    auto hash_type = cfg.hash_data_type.value();
+                    if (hash_type == "uint16") {
+                        auto u_dim = dim / (8 * sizeof(uint16_t));
+                        auto cur_query = (const uint16_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint16_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    } else if (hash_type == "uint32") {
+                        auto u_dim = dim / (8 * sizeof(uint32_t));
+                        auto cur_query = (const uint32_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint32_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    } else if (hash_type == "uint64") {
+                        auto u_dim = dim / (8 * sizeof(uint64_t));
+                        auto cur_query = (const uint64_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint64_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    }
                     break;
                 }
                 case faiss::METRIC_Hamming: {
@@ -403,8 +438,23 @@ BruteForce::SearchWithBuf(const DataSetPtr base_dataset, const DataSetPtr query_
                 }
                 case faiss::METRIC_MinHash_Jaccard: {
                     size_t mh_d = cfg.band.value();
-                    auto cur_query = (const float*)xq + dim * index;
-                    find_minhash_jaccard_hit(cur_query, (const float*)xb, dim, mh_d, nb, cur_distances, cur_labels);
+                    auto hash_type = cfg.hash_data_type.value();
+                    if (hash_type == "uint16") {
+                        auto u_dim = dim / (8 * sizeof(uint16_t));
+                        auto cur_query = (const uint16_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint16_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    } else if (hash_type == "uint32") {
+                        auto u_dim = dim / (8 * sizeof(uint32_t));
+                        auto cur_query = (const uint32_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint32_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    } else if (hash_type == "uint64") {
+                        auto u_dim = dim / (8 * sizeof(uint64_t));
+                        auto cur_query = (const uint64_t*)xq + u_dim * index;
+                        find_minhash_jaccard_hit(cur_query, (const uint64_t*)xb, u_dim, mh_d, nb, cur_distances,
+                                                 cur_labels);
+                    }
                     break;
                 }
                 case faiss::METRIC_Jaccard: {

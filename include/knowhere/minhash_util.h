@@ -18,7 +18,7 @@ namespace knowhere {
 inline Status
 MinhashConfigCheck(const size_t dim, const DataFormatEnum data_type, const uint32_t fun_type, const BaseConfig* cfg,
                    const BitsetView* bitset) {
-    if (data_type != DataFormatEnum::fp32) {
+    if (data_type != DataFormatEnum::bin1) {
         LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD only support fp32.";
         return Status::not_implemented;
     }

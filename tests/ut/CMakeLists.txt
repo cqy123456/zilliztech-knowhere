@@ -10,7 +10,7 @@
 # or implied. See the License for the specific language governing permissions and limitations under the License
 
 if(NOT DEFINED KNOWHERE_UT_SRCS)
-  knowhere_file_glob(GLOB_RECURSE KNOWHERE_UT_SRCS  test_minhash_index.cc)
+  knowhere_file_glob(GLOB_RECURSE KNOWHERE_UT_SRCS  test_minhash_index_2.cc)
 else()
   knowhere_file_glob(GLOB_RECURSE KNOWHERE_ORIGINAL_UT_SRCS *.cc)
   list(APPEND KNOWHERE_UT_SRCS ${KNOWHERE_ORIGINAL_UT_SRCS})

@@ -52,8 +52,6 @@ struct KVPair {
 // index of each band
 class MinHashBandIndex {
  public:
-    MinHashBandIndex() {
-    }
     static size_t
     FormatAndSave(faiss::BlockFileIOWriter& writer, const KVPair* sorted_kv, const size_t block_size,
                   const size_t rows);
@@ -81,21 +79,15 @@ class MinHashBandIndex {
     std::unique_ptr<char[]> owned_data_ = nullptr;
 };
 
-/* all index meta and codes will maintain as blocks in file*/
-// todo: hold raw data for higher recall
-class MinHashIndex {
+class MinHashIndexBase {
  public:
-    MinHashIndex(const size_t dim) : dim_(dim) {
-    }
-    MinHashIndex() = default;
-    static Status
-    BuildAndSave(MinHashIndexBuildParams* params);
-    Status
-    Load(MinHashIndexLoadParams* params);
-    void
-    Search(const float* query, float* distances, Idx* labels);
-    void 
-    BatchSearch(const float* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool);
+    MinHashIndexBase(){};
+    virtual Status
+    Load(MinHashIndexLoadParams* params) = 0;
+    virtual void
+    Search(const char* query, float* distances, Idx* labels) = 0;
+    virtual void
+    BatchSearch(const char* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool) = 0;
     size_t
     Count() {
         return ntotal_;
@@ -104,9 +96,32 @@ class MinHashIndex {
     GetDim() {
         return dim_;
     }
+    virtual size_t
+    Size() = 0;
+    virtual ~MinHashIndexBase() = default;
+
+ protected:
+    size_t ntotal_;
+    size_t dim_;
+};
+
+/* all index meta and codes will maintain as blocks in file*/
+// todo: hold raw data for higher recall
+template <typename IN_HASH_TYPE>
+class MinHashIndex : public MinHashIndexBase {
+ public:
+    MinHashIndex(){};
+    static Status
+    BuildAndSave(MinHashIndexBuildParams* params);
+    Status
+    Load(MinHashIndexLoadParams* params) override;
+    void
+    Search(const char* query, float* distances, Idx* labels) override;
+    void
+    BatchSearch(const char* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool) override;
     size_t
-    Size() {
-        return ntotal_ * band_ * sizeof(KeyType);
+    Size() override {
+        return this->ntotal_ * band_ * sizeof(KeyType);
     }
 
     ~MinHashIndex() {
@@ -118,14 +133,12 @@ class MinHashIndex {
  private:
     std::unique_ptr<MinHashBandIndex[]> band_index_;
     bool is_loaded_ = false;
-    size_t ntotal_;
-    size_t dim_;
     size_t block_size_;
     size_t band_;
     char* mmap_data_ = nullptr;
     size_t file_size_;
     bool with_raw_data_ = false;
-    float* raw_data_ = nullptr;  // mmap mode, use IO object later
+    IN_HASH_TYPE* raw_data_ = nullptr;  // mmap mode, use IO object later
     std::vector<BloomFilter<KeyType>> bloom_;
 };
 
@@ -134,22 +147,59 @@ namespace {
 constexpr int MMAP_IO_FLAGS = MAP_POPULATE | MAP_SHARED;
 constexpr int kBatch = 4096;
 
-// inline KeyType
-// calculate_hash(const float* data, size_t dim, size_t band, size_t band_i) {
-// constexpr int kBatch = 4096;
-// const size_t FNV_prime = 16777619;
-//     auto sub_dim = dim / band;
-//     const int start = band_i * sub_dim;
-//     size_t hash = 2166136261;
-//     for (int i = 0; i < sub_dim; ++i) {
-//         hash ^= static_cast<size_t>(data[start + i]);
-//         hash *= FNV_prime;
-//     }
-//     return hash;
-// }
+template <typename T>
+inline float
+minhash_jaccard(const T* x, const T* y, size_t d, size_t mh_d) {
+    // checking d % mh_d == 0 at first
+    size_t mh_r = d / mh_d;
+    for (size_t i = 0; i < mh_d; i++) {
+        const T* x_i = x + mh_r * i;
+        const T* y_i = y + mh_r * i;
+        size_t j = 0;
+        for (; j < mh_r; j++) {
+            if (x_i[j] != y_i[j])
+                break;
+        }
+        if (j == mh_r)
+            return 1.0;
+    }
+    return 0.0;
+}
 
-std::shared_ptr<KVPair[]>
-gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) {
+// file format:
+// n: row count
+// size: dim * data_size in bits
+template <typename T>
+inline void
+load_binary_file(const std::string& bin_file, std::unique_ptr<T[]>& data, size_t& npts, size_t& dim) {
+    std::ifstream file(bin_file, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("fail to open file: " + bin_file);
+    }
+    uint32_t n, d;
+    file.read(reinterpret_cast<char*>(&n), sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
+    npts = n;
+    dim = d / (8 * sizeof(T));
+    data = std::make_unique<T[]>(npts * dim);
+    file.read(reinterpret_cast<char*>(data.get()), dim * npts * sizeof(T));
+}
+
+template <typename IN_HASH_TYPE>
+inline KeyType
+get_hash_key(const IN_HASH_TYPE* data, size_t dim, size_t band, size_t band_i) {
+    if constexpr (std::is_same_v<IN_HASH_TYPE, uint32_t>) {
+        return faiss::calculate_hash((const uint32_t*)data, dim, band, band_i);
+    } else {
+        auto sub_dim = dim / band;
+        auto band_i_data = data + sub_dim * band_i;
+        return hash_binary_vec((const uint8_t*)band_i_data, dim * sizeof(IN_HASH_TYPE));
+    }
+}
+
+template <typename IN_HASH_TYPE>
+inline std::shared_ptr<KVPair[]>
+gen_transposed_hash_kv(const IN_HASH_TYPE* data, size_t rows, size_t dim, size_t band) {
     auto res_kv = std::shared_ptr<KVPair[]>(new KVPair[band * rows]);
     auto sub_dim = dim / band;
     auto batch_num = (rows + kBatch - 1) / kBatch;
@@ -160,9 +210,9 @@ gen_transposed_hash_kv(const float* data, size_t rows, size_t dim, size_t band) 
             auto beg_id = idx * kBatch;
             auto end_id = std::min((idx + 1) * kBatch, rows);
             for (size_t j = beg_id; j < end_id; j++) {
-                const float* data_j = data + dim * j;
+                const IN_HASH_TYPE* data_j = data + dim * j;
                 for (size_t b = 0; b < band; b++) {
-                    KVPair kv = {faiss::calculate_hash(data_j, dim, band, b), j};
+                    KVPair kv = {get_hash_key(data_j, dim, band, b), j};
                     res_kv.get()[b * rows + j] = kv;
                 }
             }
@@ -289,15 +339,16 @@ MinHashBandIndex::Search(KeyType key, bool more_res) {
     }
 }
 
+template <typename IN_HASH_TYPE>
 Status
-MinHashIndex::BuildAndSave(MinHashIndexBuildParams* params) {
+MinHashIndex<IN_HASH_TYPE>::BuildAndSave(MinHashIndexBuildParams* params) {
     if (params == nullptr) {
         LOG_KNOWHERE_ERROR_ << "build parameters is null.";
         return Status::invalid_args;
     }
-    std::unique_ptr<float[]> data = nullptr;
+    std::unique_ptr<IN_HASH_TYPE[]> data = nullptr;
     size_t ntotal, dim;
-    diskann::load_bin(params->data_path, data, ntotal, dim);
+    load_binary_file<IN_HASH_TYPE>(params->data_path, data, ntotal, dim);
     if (dim % params->band != 0) {
         LOG_KNOWHERE_ERROR_ << "dim % params.band != 0";
         return Status::invalid_args;
@@ -311,7 +362,7 @@ MinHashIndex::BuildAndSave(MinHashIndexBuildParams* params) {
     size_t data_pos = -1;
     if (params->has_raw_data) {
         data_pos = writer.tellg();
-        writer.flush_and_write((char*)data.get(), ntotal * dim * sizeof(float));
+        writer.flush_and_write((char*)data.get(), ntotal * dim * sizeof(IN_HASH_TYPE));
     }
     std::vector<size_t> band_index_ofs(band_index_n);
     for (size_t index_i = 0; index_i < band_index_n; index_i++) {
@@ -336,15 +387,16 @@ MinHashIndex::BuildAndSave(MinHashIndexBuildParams* params) {
     return Status::success;
 }
 
+template <typename IN_HASH_TYPE>
 Status
-MinHashIndex::Load(MinHashIndexLoadParams* params) {
+MinHashIndex<IN_HASH_TYPE>::Load(MinHashIndexLoadParams* params) {
     if (params == nullptr) {
         LOG_KNOWHERE_ERROR_ << "load parameters is null.";
         return Status::invalid_args;
     }
     auto reader = FileReader(params->index_file_path);
-    readBinaryPOD(reader, ntotal_);
-    readBinaryPOD(reader, dim_);
+    readBinaryPOD(reader, this->ntotal_);
+    readBinaryPOD(reader, this->dim_);
     readBinaryPOD(reader, block_size_);
     readBinaryPOD(reader, band_);
     size_t data_pos;
@@ -369,39 +421,42 @@ MinHashIndex::Load(MinHashIndexLoadParams* params) {
         this->mmap_data_ = nullptr;
     }
     if (this->with_raw_data_) {
-        raw_data_ = (float*)(mmap_data_ + data_pos);
+        raw_data_ = (IN_HASH_TYPE*)(mmap_data_ + data_pos);
     }
     band_index_ = std::make_unique<MinHashBandIndex[]>(band_);
     std::vector<size_t> band_index_ofs(band_);
     reader.read((char*)band_index_ofs.data(), band_index_ofs.size() * sizeof(size_t));
     if (params->global_bloom_filter) {
-        bloom_ = std::vector<BloomFilter<KeyType>>(1, BloomFilter<KeyType>(ntotal_, params->false_positive_prob));
+        bloom_ = std::vector<BloomFilter<KeyType>>(1, BloomFilter<KeyType>(this->ntotal_, params->false_positive_prob));
     } else {
-        bloom_ = std::vector<BloomFilter<KeyType>>(band_, BloomFilter<KeyType>(ntotal_, params->false_positive_prob));
+        bloom_ =
+            std::vector<BloomFilter<KeyType>>(band_, BloomFilter<KeyType>(this->ntotal_, params->false_positive_prob));
     }
     auto band_mmap_addr = params->hash_code_in_memory ? nullptr : this->mmap_data_;
     for (size_t i = 0; i < band_; i++) {
         reader.seek(band_index_ofs[i]);
-        band_index_[i].Load(reader, ntotal_, band_mmap_addr, bloom_[i % bloom_.size()], i == 0);
+        band_index_[i].Load(reader, this->ntotal_, band_mmap_addr, bloom_[i % bloom_.size()], i == 0);
     }
     is_loaded_ = true;
     return Status::success;
 }
 
+template <typename IN_HASH_TYPE>
 void
-MinHashIndex::Search(const float* query, float* distances, Idx* labels) {
+MinHashIndex<IN_HASH_TYPE>::Search(const char* query, float* distances, Idx* labels) {
     *distances = 0;
     *labels = -1;
     for (auto i = 0; i < band_; i++) {
-        const auto hash = faiss::calculate_hash(query, dim_, band_, i);
+        const auto hash = get_hash_key((const IN_HASH_TYPE*)query, this->dim_, band_, i);
         auto& band = band_index_[i];
         auto& bloom = bloom_[i % bloom_.size()];
         if (bloom.contains(hash)) {
             auto ids = band.Search(hash, with_raw_data_);
             for (auto& id : ids) {
                 if (id != -1) {
-                    auto dis =
-                        with_raw_data_ ? faiss::fvec_minhash_jaccard(query, raw_data_ + id * dim_, dim_, band_) : 1;
+                    auto dis = with_raw_data_ ? minhash_jaccard((const IN_HASH_TYPE*)query, raw_data_ + id * this->dim_,
+                                                                this->dim_, band_)
+                                              : 1;
                     if (dis != 0) {
                         *distances = 1;
                         *labels = id;
@@ -414,36 +469,41 @@ MinHashIndex::Search(const float* query, float* distances, Idx* labels) {
     return;
 }
 
+template <typename IN_HASH_TYPE>
 void
-MinHashIndex::BatchSearch(const float* query, size_t nq, float* distances, Idx* labels, std::shared_ptr<ThreadPool> pool) {
+MinHashIndex<IN_HASH_TYPE>::BatchSearch(const char* query, size_t nq, float* distances, Idx* labels,
+                                        std::shared_ptr<ThreadPool> pool) {
     std::vector<std::vector<KVPair>> q_band_hash(band_, std::vector<KVPair>());
     for (auto i = 0; i < nq; i++) {
         distances[i] = 0;
         labels[i] = -1;
         for (auto j = 0; j < band_; j++) {
-            auto hash = faiss::calculate_hash(query + i * dim_, dim_, band_, j);
+            auto hash = get_hash_key((const IN_HASH_TYPE*)query + i * this->dim_, this->dim_, band_, j);
             if (bloom_[j % bloom_.size()].contains(hash)) {
-                q_band_hash[j].emplace_back(KVPair{hash,i});
+                q_band_hash[j].emplace_back(KVPair{hash, i});
             }
         }
     }
     std::vector<folly::Future<folly::Unit>> futures;
     futures.reserve(band_);
     for (size_t b_i = 0; b_i < band_; b_i++) {
-     //   std::cout<<"band i"<<b_i<<std::endl;
+        //   std::cout<<"band i"<<b_i<<std::endl;
         futures.emplace_back(pool->push([&, &band = band_index_[b_i], &q_kv_list = q_band_hash[b_i]]() {
             for (auto& q_kv : q_kv_list) {
-              //  std::cout <<"q_kv:"<<q_kv.Value<<std::endl;
-                if (labels[q_kv.Value] != -1) continue;
-                auto hash = q_kv.Key; 
+                //  std::cout <<"q_kv:"<<q_kv.Value<<std::endl;
+                if (labels[q_kv.Value] != -1)
+                    continue;
+                auto hash = q_kv.Key;
                 auto ids = band.Search(hash, with_raw_data_);
-              //  float dis;
-              //  Idx id;
-               // MinHashIndex::Search(query + dim_ * q_kv.Value, dis, id); 
+                //  float dis;
+                //  Idx id;
+                // MinHashIndex::Search(query + this->dim_ * q_kv.Value, dis, id);
                 for (auto& id : ids) {
                     if (id != -1) {
-                        auto dis =
-                            with_raw_data_ ? faiss::fvec_minhash_jaccard(query + dim_ * q_kv.Value, raw_data_ + id * dim_, dim_, band_) : 1;
+                        auto dis = with_raw_data_
+                                       ? minhash_jaccard((const IN_HASH_TYPE*)query + this->dim_ * q_kv.Value,
+                                                         raw_data_ + id * this->dim_, this->dim_, band_)
+                                       : 1;
                         if (dis != 0) {
                             distances[q_kv.Value] = 1;
                             labels[q_kv.Value] = id;

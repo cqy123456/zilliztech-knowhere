@@ -191,6 +191,6 @@ int
 binary_search_lt_ref(const uint64_t*, const size_t n, const uint64_t key);
 
 uint64_t
-calculate_hash_ref(const float* data, size_t dim, size_t band, size_t band_i);
+calculate_hash_ref(const uint32_t* data, size_t dim, size_t band, size_t band_i);
 
 }  // namespace faiss

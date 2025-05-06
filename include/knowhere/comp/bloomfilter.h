@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "io/memory_io.h"
-#include "knowhere/utils.h"
 #include "knowhere/bitsetview.h"
+#include "knowhere/utils.h"
 namespace knowhere {
 template <typename T>
 class BloomFilter {
@@ -29,16 +29,15 @@ class BloomFilter {
         k = static_cast<int>(m / n * log(2));
         m = std::max<size_t>(m, 1);
         k = std::max(k, 1);
-        bits.resize((m +7)/8, 0);
-
+        bits.resize(m, false);
     }
 
     void
     add(const T& element) {
-        size_t glb_hash =  hash((const char*)&element, sizeof(element), 0);
+        size_t glb_hash = hash((const char*)&element, sizeof(element), 0);
         for (int i = 0; i < k; ++i) {
             size_t pos = (glb_hash + i) % m;
-            set_bit(pos);
+            bits[pos] = true;
         }
     }
 
@@ -47,7 +46,7 @@ class BloomFilter {
         size_t glb_hash = hash((const char*)&element, sizeof(element), 0);
         for (int i = 0; i < k; ++i) {
             size_t pos = (glb_hash + i) % m;
-            if (!count(pos))
+            if (!bits[pos])
                 return false;
         }
         return true;
@@ -94,20 +93,12 @@ class BloomFilter {
     }
 
  private:
-    static constexpr size_t multiplier = 31; 
-    std::vector<uint8_t> bits;
+    static constexpr size_t multiplier = 31;
+    std::vector<bool> bits;
     size_t m;
     int k;
     double p;
     size_t n;
-    void
-    set_bit(const int idx) {
-        bits[idx >> 3] |= 0x1 << (idx & 0x7);
-    }
-    bool 
-    count(const int idx) const {
-        return bits[idx >> 3] & (0x1 << (idx & 0x7));
-    }
 
     // todo: handle nullptr
     size_t

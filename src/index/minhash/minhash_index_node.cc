@@ -162,7 +162,7 @@ class MinHashIndexNode : public IndexNode {
 
     std::string index_prefix_;
     std::shared_ptr<FileManager> file_manager_;
-    std::unique_ptr<MinHashIndex> minhash_index_;
+    std::unique_ptr<MinHashIndexBase> minhash_index_;
     std::shared_ptr<ThreadPool> search_pool_;
     bool is_loaded_ = false;
     const std::string fname_ = "minhash_index";
@@ -180,12 +180,33 @@ MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Conf
     index_params->index_file_path = build_conf.index_prefix.value() + fname_;
     index_params->block_size = build_conf.aligned_block_size.value();
     index_params->has_raw_data = build_conf.with_raw_data.value();
+    auto hash_type = build_conf.hash_data_type.value();
     size_t dim, rows;
     diskann::get_bin_metadata(build_conf.data_path.value(), rows, dim);
-    index_params->band = build_conf.band.has_value() ? build_conf.band.value() : dim;
-    auto build_stat = MinHashIndex::BuildAndSave(index_params.get());
-    if (build_stat != Status::success) {
-        return build_stat;
+    if (hash_type == "uint16") {
+        size_t data_dim = dim / (8 * sizeof(uint16_t));
+        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
+        auto build_stat = MinHashIndex<uint16_t>::BuildAndSave(index_params.get());
+        if (build_stat != Status::success) {
+            return build_stat;
+        }
+    } else if (hash_type == "uint32") {
+        size_t data_dim = dim / (8 * sizeof(uint32_t));
+        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
+        auto build_stat = MinHashIndex<uint32_t>::BuildAndSave(index_params.get());
+        if (build_stat != Status::success) {
+            return build_stat;
+        }
+    } else if (hash_type == "uint64") {
+        size_t data_dim = dim / (8 * sizeof(uint64_t));
+        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
+        auto build_stat = MinHashIndex<uint64_t>::BuildAndSave(index_params.get());
+        if (build_stat != Status::success) {
+            return build_stat;
+        }
+    } else {
+        LOG_KNOWHERE_ERROR_ << "Failed to generate minhash index." << std::endl;
+        return Status::internal_error;
     }
     if (!AddFile(index_params->index_file_path)) {
         LOG_KNOWHERE_ERROR_ << "Failed to add file " << index_params->index_file_path << ".";
@@ -207,7 +228,17 @@ MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
         return Status::disk_file_error;
     }
-    minhash_index_ = std::make_unique<MinHashIndex>();
+    auto hash_type = load_conf.hash_data_type.value();
+    if (hash_type == "uint16") {
+        minhash_index_ = std::make_unique<MinHashIndex<uint16_t>>();
+    } else if (hash_type == "uint32") {
+        minhash_index_ = std::make_unique<MinHashIndex<uint32_t>>();
+    } else if (hash_type == "uint64") {
+        minhash_index_ = std::make_unique<MinHashIndex<uint64_t>>();
+    } else {
+        LOG_KNOWHERE_ERROR_ << "Failed to generate minhash index." << std::endl;
+        return Status::internal_error;
+    }
     auto stat = minhash_index_->Load(index_params.get());
     if (stat == Status::success) {
         is_loaded_ = true;
@@ -224,13 +255,13 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
         return expected<DataSetPtr>::Err(Status::empty_index, "Minhash index not loaded");
     }
     auto search_conf = static_cast<const MinHashConfig&>(*cfg);
-    auto stat = MinhashConfigCheck(dataset->GetDim(), DataFormatEnum::fp32, PARAM_TYPE::SEARCH, &search_conf, &bitset);
+    auto stat = MinhashConfigCheck(dataset->GetDim(), DataFormatEnum::bin1, PARAM_TYPE::SEARCH, &search_conf, &bitset);
     if (stat != Status::success) {
         return expected<DataSetPtr>::Err(Status::invalid_args, "MinhashConfigCheck fail.");
     }
     auto nq = dataset->GetRows();
-    auto dim = dataset->GetDim();
-    auto xq = static_cast<const float*>(dataset->GetTensor());
+    auto dim = dataset->GetDim() / 8;
+    auto xq = static_cast<const char*>(dataset->GetTensor());
     auto p_id = std::make_unique<int64_t[]>(nq);
     auto p_dist = std::make_unique<DistType[]>(nq);
     if (nq >= 10000000) {
@@ -238,21 +269,22 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
     } else {
         std::vector<folly::Future<folly::Unit>> futures;
         auto batch_size = 64;
-        auto run_time = (nq + batch_size -1 )/batch_size;
+        auto run_time = (nq + batch_size - 1) / batch_size;
         futures.reserve(nq);
         for (int64_t row = 0; row < run_time; ++row) {
-            futures.emplace_back(search_pool_->push([&, beg = row * batch_size, end = std::min((row+1)*batch_size, nq), p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
-                for (auto index = beg; index < end; index++) {
-                    minhash_index_->Search(xq + (index * dim), p_dist_ptr + index, p_id_ptr + index);
-                }
-            }));
+            futures.emplace_back(
+                search_pool_->push([&, beg = row * batch_size, end = std::min((row + 1) * batch_size, nq),
+                                    p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
+                    for (auto index = beg; index < end; index++) {
+                        minhash_index_->Search(xq + (index * dim), p_dist_ptr + index, p_id_ptr + index);
+                    }
+                }));
         }
         WaitAllSuccess(futures);
-       
     }
-    auto res = GenResultDataSet(nq, 1, std::move(p_id), std::move(p_dist));   
+    auto res = GenResultDataSet(nq, 1, std::move(p_id), std::move(p_dist));
     return res;
 }
 // hack, fp16/bf16 not work
-KNOWHERE_MOCK_REGISTER_DENSE_FLOAT_ALL_GLOBAL(MinHashIndex, MinHashIndexNode, knowhere::feature::DISK)
+KNOWHERE_MOCK_REGISTER_DENSE_BINARY_ALL_GLOBAL(MinHashIndex, MinHashIndexNode, knowhere::feature::DISK)
 }  // namespace knowhere

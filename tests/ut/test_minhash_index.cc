@@ -9,6 +9,8 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
+#include <gperftools/profiler.h>
+
 #include <string>
 
 #include "catch2/catch_approx.hpp"
@@ -21,9 +23,7 @@
 #include "knowhere/index/index_factory.h"
 #include "knowhere/utils.h"
 #include "utils.h"
-
-#include <gperftools/profiler.h>
-#include <gperftools/heap-profiler.h>
+//#include <gperftools/heap-profiler.h>
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -35,10 +35,10 @@ error "Missing the <filesystem> header."
 #endif
 #include <fstream>
 namespace {
-const auto train_ds_path = "/home/cqy845003/knowhere/mh_data/mh_data.fbin";
-const auto query_ds_path = "/home/cqy845003/knowhere/mh_data/mh_query.fbin";
+const auto train_ds_path = "/home/cqy845003/knowhere/mh_base.fbin";
+const auto query_ds_path = "/home/cqy845003/knowhere/mh_base.fbin";
 std::string kDir = fs::current_path().string() + "/minhash_index_test";
-std::string kRawDataPath = kDir + "/raw_data";
+std::string kRawDataPath = train_ds_path;
 std::string kIndexDir = kDir + "/index";
 std::string kIndexPrefix = kIndexDir + "/minhash";
 
@@ -69,12 +69,12 @@ GenDataSet(const std::string& file_path) {
     file.read(reinterpret_cast<char*>(&n), sizeof(uint32_t));
     file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
     std::cout << "数据个数: " << n << ", 维度: " << d << std::endl;
-    float* flat_data = new float[n * d];
-    const size_t num_floats = n * d;
-    file.read(reinterpret_cast<char*>(flat_data), num_floats * sizeof(float));
+    char* flat_data = new char[n * d / 8];
+    const size_t num_floats = n * d / 8;
+    file.read(reinterpret_cast<char*>(flat_data), num_floats * sizeof(char));
 
     // 检查是否读取完整
-    if (file.gcount() != num_floats * sizeof(float)) {
+    if (file.gcount() != num_floats * sizeof(char)) {
         throw std::runtime_error("文件数据不完整");
     }
     auto ds = knowhere::GenDataSet(n, d, flat_data);
@@ -96,8 +96,8 @@ inline void
 base_search() {
     // fs::remove_all(kDir);
     // fs::remove(kDir);
-    REQUIRE_NOTHROW(fs::create_directory(kDir));
-    REQUIRE_NOTHROW(fs::create_directory(kIndexDir));
+    // REQUIRE_NOTHROW(fs::create_directory(kDir));
+    // REQUIRE_NOTHROW(fs::create_directory(kIndexDir));
 
     auto metric_str = GENERATE(as<std::string>{}, knowhere::metric::MHJACCARD);
     auto version = GenTestVersionList();
@@ -110,6 +110,8 @@ base_search() {
         knowhere::Json json;
         json["metric_type"] = metric_str;
         json["k"] = 1;
+        json["band"] = 13;
+        json["hash_data_type"] = "uint32";
         return json;
     };
 
@@ -143,37 +145,37 @@ base_search() {
     knowhere::DataSetPtr range_search_gt_ptr = nullptr;
     //   auto fp32_base_ds = GenDataSet(query_ds_path);
 
-   // auto base_ds = GenDataSet(train_ds_path);
-    //auto query_ds = GenDataSet(train_ds_path);
-   // auto nq = 1000;
-   // query_ds->SetRows(nq);
+    auto base_ds = GenDataSet(train_ds_path);
+    auto query_ds = GenDataSet(train_ds_path);
+    auto nq = 1000;
+    query_ds->SetRows(nq);
     // auto base_ds = GenDataSet(1000000, kDim,20);
     // auto query_ds = GenDataSet(100000, kDim,40);
     // auto nq = query_ds->GetRows();
     // WriteRawDataToDisk<float>(kRawDataPath, (const float*)base_ds->GetTensor(), 1000000, kDim);
-   // auto nq = 1000;
-   // query_ds->SetRows(nq);
-    //auto nq = query_ds->GetRows();
-   // auto  nq = 1000;
-//    {
-//        WriteRawDataToDisk(kRawDataPath, (const float*)(query_ds->GetTensor() + sizeof(float) * query_ds->GetDim() * nq), query_ds->GetRows() - nq,  query_ds->GetDim());
-//       query_ds->SetRows(nq);
-//     }
+    // auto nq = 1000;
+    // query_ds->SetRows(nq);
+    // auto nq = query_ds->GetRows();
+    // auto  nq = 1000;
+    //    {
+    //        WriteRawDataToDisk(kRawDataPath, (const float*)(query_ds->GetTensor() + sizeof(float) * query_ds->GetDim()
+    //        * nq), query_ds->GetRows() - nq,  query_ds->GetDim());
+    //       query_ds->SetRows(nq);
+    //     }
 
-    // {
-    //     auto base_ptr = static_cast<const DataType*>(base_ds->GetTensor());
-    //     // WriteRawDataToDisk<DataType>(kRawDataPath, base_ptr, kNumRows, kDim);
-
-    //     // generate the gt of knn search and range search
-    //     auto base_json = base_gen();
-    //     auto t1 = elapsed();
-    //     std::cout << "use BruteForce to get gt.... " << std::endl;
-    //     auto result_knn = knowhere::BruteForce::Search<DataType>(base_ds, query_ds, base_json, nullptr);
-    //     auto t_2 = elapsed() - t1;
-    //     std::cout << "BF VPS: "<< nq/t_2<<std::endl;
-    //     std::cout << "get gt done" << std::endl;
-    //     knn_gt_ptr = result_knn.value();
-    // }
+    {
+        auto base_ptr = static_cast<const DataType*>(base_ds->GetTensor());
+        // WriteRawDataToDisk<DataType>(kRawDataPath, base_ptr, kNumRows, kDim);
+        // generate the gt of knn search and range search
+        auto base_json = base_gen();
+        auto t1 = elapsed();
+        std::cout << "use BruteForce to get gt.... " << std::endl;
+        auto result_knn = knowhere::BruteForce::Search<DataType>(base_ds, query_ds, base_json, nullptr);
+        auto t_2 = elapsed() - t1;
+        std::cout << "BF VPS: " << nq / t_2 << std::endl;
+        std::cout << "get gt done" << std::endl;
+        knn_gt_ptr = result_knn.value();
+    }
 
     SECTION("Test search") {
         std::shared_ptr<knowhere::FileManager> file_manager = std::make_shared<knowhere::LocalFileManager>();
@@ -184,36 +186,36 @@ base_search() {
         auto build_json = build_gen().dump();
         knowhere::Json json = knowhere::Json::parse(build_json);
         // build process
-        // {
-        //     knowhere::DataSetPtr ds_ptr = nullptr;
-        //     auto minhash_index = knowhere::IndexFactory::Instance()
-        //                              .Create<DataType>("MinHashIndex", version, minhash_index_index_pack)
-        //                              .value();
-        //     minhash_index.Build(ds_ptr, json);
-        //     minhash_index.Serialize(binset);
-        // }
+        {
+            knowhere::DataSetPtr ds_ptr = nullptr;
+            auto minhash_index = knowhere::IndexFactory::Instance()
+                                     .Create<DataType>("MinHashIndex", version, minhash_index_index_pack)
+                                     .value();
+            minhash_index.Build(ds_ptr, json);
+            minhash_index.Serialize(binset);
+        }
         {
             // knn search
             auto minhash_index = knowhere::IndexFactory::Instance()
                                      .Create<DataType>("MinHashIndex", version, minhash_index_index_pack)
                                      .value();
-           HeapProfilerStart("memory_profile");
+            // HeapProfilerStart("memory_profile");
             minhash_index.Deserialize(binset, deserialize_json);
-           HeapProfilerStop(); 
+            // HeapProfilerStop();
 
-            // auto knn_search_json = knn_search_gen().dump();
-            // knowhere::Json knn_json = knowhere::Json::parse(knn_search_json);
-            // std::cout << "begin of search" << std::endl;
-            // auto t1 = elapsed();
-            // auto res = minhash_index.Search(query_ds, knn_json, nullptr);
-            // auto t_2 = elapsed() - t1;
-            // std::cout << "index VPS: "<< nq/t_2<<std::endl;
-            // std::cout << "end of search" << std::endl;
-            // REQUIRE(res.has_value());
-            // std::cout << "compare recall" << std::endl;
-         //   auto knn_recall = GetKNNRecall(*knn_gt_ptr, *res.value());
-           // std::cout << "knn recall" << knn_recall << std::endl;
-            //REQUIRE(knn_recall > kKnnRecall);
+            auto knn_search_json = knn_search_gen().dump();
+            knowhere::Json knn_json = knowhere::Json::parse(knn_search_json);
+            std::cout << "begin of search" << std::endl;
+            auto t1 = elapsed();
+            auto res = minhash_index.Search(query_ds, knn_json, nullptr);
+            auto t_2 = elapsed() - t1;
+            std::cout << "index VPS: " << nq / t_2 << std::endl;
+            std::cout << "end of search" << std::endl;
+            REQUIRE(res.has_value());
+            std::cout << "compare recall" << std::endl;
+            auto knn_recall = GetKNNRecall(*knn_gt_ptr, *res.value());
+            std::cout << "knn recall" << knn_recall << std::endl;
+            REQUIRE(knn_recall > kKnnRecall);
         }
     }
     // fs::remove_all(kDir);
@@ -221,5 +223,5 @@ base_search() {
 }
 
 TEST_CASE("Test DiskANNIndexNode.", "[minhash_index]") {
-    base_search<knowhere::fp32>();
+    base_search<knowhere::bin1>();
 }

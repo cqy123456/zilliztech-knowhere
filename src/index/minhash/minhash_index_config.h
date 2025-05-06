@@ -24,6 +24,7 @@ class MinHashConfig : public BaseConfig {
     CFG_BOOL with_raw_data;
     CFG_BOOL shared_bloom_filter;
     CFG_FLOAT bloom_false_positive_prob;
+    CFG_STRING hash_data_type;
     KNOHWERE_DECLARE_CONFIG(MinHashConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(aligned_block_size)
             .description("the degree of the graph index.")
@@ -51,6 +52,11 @@ class MinHashConfig : public BaseConfig {
             .description("whether to use one bloom filter for all band")
             .set_default(0.01)
             .set_range(0.0, 1.0)
+            .for_deserialize();
+        KNOWHERE_CONFIG_DECLARE_FIELD(hash_data_type)
+            .description("input data type of hash code, uint32, uint16 or uint64.")
+            .set_default("uint32")
+            .for_train()
             .for_deserialize();
     }
 };

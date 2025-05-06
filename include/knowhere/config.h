@@ -637,6 +637,7 @@ class BaseConfig : public Config {
      * band is a special parameters of BF search and MinHash index node train.
      */
     CFG_INT band;
+    CFG_STRING hash_data_type;
     KNOHWERE_DECLARE_CONFIG(BaseConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(dim).allow_empty_without_default().description("vector dim").for_train();
         KNOWHERE_CONFIG_DECLARE_FIELD(metric_type)
@@ -790,6 +791,11 @@ class BaseConfig : public Config {
             .set_default(1)
             .for_train()
             .for_search();
+        KNOWHERE_CONFIG_DECLARE_FIELD(hash_data_type)
+            .description("input data type of hash code, uint32, uint16 or uint64.")
+            .set_default("uint32")
+            .for_train()
+            .for_deserialize();
     }
 };
 }  // namespace knowhere
