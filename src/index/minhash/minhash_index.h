@@ -181,8 +181,9 @@ load_binary_file(const std::string& bin_file, std::unique_ptr<T[]>& data, size_t
     file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
     npts = n;
     dim = d / (8 * sizeof(T));
+    uint64_t total_size = dim * npts * sizeof(T);
     data = std::make_unique<T[]>(npts * dim);
-    file.read(reinterpret_cast<char*>(data.get()), dim * npts * sizeof(T));
+    file.read(reinterpret_cast<char*>(data.get()), total_size);
 }
 
 template <typename IN_HASH_TYPE>
