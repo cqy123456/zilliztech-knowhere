@@ -146,6 +146,60 @@ class MinHashIndex : public MinHashIndexBase {
 namespace {
 constexpr int MMAP_IO_FLAGS = MAP_POPULATE | MAP_SHARED;
 constexpr int kBatch = 4096;
+inline int
+binary_search_eq(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] < target) {
+            left = mid + 1;
+        } else if (target < data[mid]) {
+            right = mid - 1;
+        } else {
+            result = mid;
+            right = mid - 1;
+        }
+    }
+    return result;
+}
+
+inline int
+binary_search_ge(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] >= target) {
+            result = mid;
+            right = mid - 1;
+        } else {
+            left = mid + 1;
+        }
+    }
+    return result;
+}
+inline int
+binary_search_lt(const uint64_t* data, const size_t size, const uint64_t target) {
+    int left = 0;
+    int right = static_cast<int>(size) - 1;
+    int result = -1;
+
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        if (data[mid] < target) {
+            result = mid;
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+    return result;
+}
 
 template <typename T>
 inline float
@@ -212,6 +266,7 @@ gen_transposed_hash_kv(const IN_HASH_TYPE* data, size_t rows, size_t dim, size_t
             auto end_id = std::min((idx + 1) * kBatch, rows);
             for (size_t j = beg_id; j < end_id; j++) {
                 const IN_HASH_TYPE* data_j = data + dim * j;
+
                 for (size_t b = 0; b < band; b++) {
                     KVPair kv = {get_hash_key(data_j, dim, band, b), j};
                     res_kv.get()[b * rows + j] = kv;
@@ -299,6 +354,7 @@ MinHashBandIndex::Load(FileReader& reader, size_t rows, char* mmap_data, BloomFi
         reader.read(owned_data_.get(), block_size_ * blocks_num_);
         data_ = owned_data_.get();
     }
+
     auto build_pool = ThreadPool::GetGlobalBuildThreadPool();
     std::vector<folly::Future<folly::Unit>> futures;
     for (auto i = 0; i < blocks_num_; i++) {
@@ -314,15 +370,14 @@ MinHashBandIndex::Load(FileReader& reader, size_t rows, char* mmap_data, BloomFi
 }
 std::vector<ValueType>
 MinHashBandIndex::Search(KeyType key, bool more_res) {
-    auto block_id = faiss::binary_search_ge(maxs_.data(), maxs_.size(), key);
+    auto block_id = binary_search_ge(maxs_.data(), maxs_.size(), key);
     if (block_id == -1 || key < mins_[block_id]) {
         return {-1};
     }
     auto rows = num_in_a_blk_[block_id];
     KeyType* blk_k = reinterpret_cast<KeyType*>(data_ + block_size_ * block_id);
     ValueType* blk_v = reinterpret_cast<ValueType*>(data_ + block_size_ * block_id + rows * sizeof(KeyType));
-    auto inner_id = faiss::binary_search_eq(blk_k, rows, key);
-
+    auto inner_id = binary_search_eq(blk_k, rows, key);
     if (inner_id == -1) {
         return {-1};
     } else if (more_res == false) {
@@ -436,7 +491,7 @@ MinHashIndex<IN_HASH_TYPE>::Load(MinHashIndexLoadParams* params) {
     auto band_mmap_addr = params->hash_code_in_memory ? nullptr : this->mmap_data_;
     for (size_t i = 0; i < band_; i++) {
         reader.seek(band_index_ofs[i]);
-        band_index_[i].Load(reader, this->ntotal_, band_mmap_addr, bloom_[i % bloom_.size()], i == 0);
+        band_index_[i].Load(reader, this->ntotal_, band_mmap_addr, bloom_[i % bloom_.size()], i == 6);
     }
     is_loaded_ = true;
     return Status::success;
@@ -488,10 +543,8 @@ MinHashIndex<IN_HASH_TYPE>::BatchSearch(const char* query, size_t nq, float* dis
     std::vector<folly::Future<folly::Unit>> futures;
     futures.reserve(band_);
     for (size_t b_i = 0; b_i < band_; b_i++) {
-        //   std::cout<<"band i"<<b_i<<std::endl;
         futures.emplace_back(pool->push([&, &band = band_index_[b_i], &q_kv_list = q_band_hash[b_i]]() {
             for (auto& q_kv : q_kv_list) {
-                //  std::cout <<"q_kv:"<<q_kv.Value<<std::endl;
                 if (labels[q_kv.Value] != -1)
                     continue;
                 auto hash = q_kv.Key;
