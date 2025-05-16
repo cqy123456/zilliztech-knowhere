@@ -25,6 +25,7 @@ class MinHashConfig : public BaseConfig {
     CFG_BOOL shared_bloom_filter;
     CFG_FLOAT bloom_false_positive_prob;
     CFG_STRING hash_data_type;
+    CFG_BOOL batch_search;
     KNOHWERE_DECLARE_CONFIG(MinHashConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(aligned_block_size)
             .description("the degree of the graph index.")
@@ -58,6 +59,10 @@ class MinHashConfig : public BaseConfig {
             .set_default("uint32")
             .for_train()
             .for_deserialize();
+        KNOWHERE_CONFIG_DECLARE_FIELD(batch_search)
+            .description("whether to use one bloom filter for all band")
+            .set_default(true)
+            .for_search();
     }
 };
 }  // namespace knowhere
