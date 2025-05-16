@@ -264,7 +264,7 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
     auto xq = static_cast<const char*>(dataset->GetTensor());
     auto p_id = std::make_unique<int64_t[]>(nq);
     auto p_dist = std::make_unique<DistType[]>(nq);
-    if (search_conf.batch_search) {
+    if (search_conf.batch_search.value() == true) {
         minhash_index_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_);
     } else {
         std::vector<folly::Future<folly::Unit>> futures;
