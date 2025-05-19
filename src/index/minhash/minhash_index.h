@@ -541,34 +541,41 @@ MinHashIndex<IN_HASH_TYPE>::BatchSearch(const char* query, size_t nq, float* dis
         }
     }
     std::vector<folly::Future<folly::Unit>> futures;
-    futures.reserve(band_);
     for (size_t b_i = 0; b_i < band_; b_i++) {
-        futures.emplace_back(pool->push([&, &band = band_index_[b_i], &q_kv_list = q_band_hash[b_i]]() {
-            for (auto& q_kv : q_kv_list) {
-                if (labels[q_kv.Value] != -1)
-                    continue;
-                auto hash = q_kv.Key;
-                auto ids = band.Search(hash, with_raw_data_);
-                //  float dis;
-                //  Idx id;
-                // MinHashIndex::Search(query + this->dim_ * q_kv.Value, dis, id);
-                for (auto& id : ids) {
-                    if (id != -1) {
-                        auto dis = with_raw_data_
-                                       ? minhash_jaccard((const IN_HASH_TYPE*)query + this->dim_ * q_kv.Value,
-                                                         raw_data_ + id * this->dim_, this->dim_, band_)
-                                       : 1;
-                        if (dis != 0) {
-                            distances[q_kv.Value] = 1;
-                            labels[q_kv.Value] = id;
+        constexpr size_t batch_num = 64;
+        futures.reserve((q_band_hash[b_i].size() + batch_num)/batch_num);
+        for (size_t i = 0; i <  q_band_hash[b_i].size(); i += batch_num) {
+            auto size = std::min(batch_num, q_band_hash[b_i].size() - i);
+            //auto& band = band_index_[b_i]; auto q_kv_list = q_band_hash[b_i].data()+is; auto list_size = size;
+            futures.emplace_back(pool->push([&, &band = band_index_[b_i], q_kv_list = q_band_hash[b_i].data()+i, list_size = size]() {
+                for (auto j = 0; j < list_size; j++)  {
+                    auto q_kv  = q_kv_list[j];
+                    if (labels[q_kv.Value] != -1)
+                        continue;
+                    auto hash = q_kv.Key;
+                    auto ids = band.Search(hash, with_raw_data_);
+                    //  float dis;
+                    //  Idx id;
+                    // MinHashIndex::Search(query + this->dim_ * q_kv.Value, dis, id);
+                    for (auto& id : ids) {
+                        if (id != -1) {
+                            auto dis = with_raw_data_
+                                        ? minhash_jaccard((const IN_HASH_TYPE*)query + this->dim_ * q_kv.Value,
+                                                            raw_data_ + id * this->dim_, this->dim_, band_)
+                                        : 1;
+                            if (dis != 0) {
+                                distances[q_kv.Value] = 1;
+                                labels[q_kv.Value] = id;
+                            }
                         }
                     }
                 }
-            }
-            return;
-        }));
+             return;  
+          }));
+        }
+        WaitAllSuccess(futures);
+        futures.clear();
     }
-    WaitAllSuccess(futures);
     return;
 }
 }  // namespace knowhere
