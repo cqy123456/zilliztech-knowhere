@@ -21,9 +21,11 @@ class MinHashConfig : public BaseConfig {
     CFG_INT aligned_block_size;
     CFG_INT band;
     CFG_BOOL hash_code_in_mem;
-    CFG_BOOL with_raw_data;
     CFG_BOOL shared_bloom_filter;
     CFG_FLOAT bloom_false_positive_prob;
+    CFG_INT  element_bit_width;
+    CFG_BOOL with_raw_data;
+    CFG_INT  refine_k;
     CFG_STRING hash_data_type;
     KNOHWERE_DECLARE_CONFIG(MinHashConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(aligned_block_size)
@@ -36,12 +38,8 @@ class MinHashConfig : public BaseConfig {
             .allow_empty_without_default()
             .set_range(1, std::numeric_limits<CFG_INT::value_type>::max())
             .for_train();
-        KNOWHERE_CONFIG_DECLARE_FIELD(with_raw_data)
-            .description("the degree of the graph index.")
-            .set_default(false)
-            .for_train();
         KNOWHERE_CONFIG_DECLARE_FIELD(hash_code_in_mem)
-            .description("hash code is mmap mdode.")
+            .description("hash code is mmap mode.")
             .set_default(true)
             .for_deserialize();
         KNOWHERE_CONFIG_DECLARE_FIELD(shared_bloom_filter)
@@ -53,8 +51,19 @@ class MinHashConfig : public BaseConfig {
             .set_default(0.01)
             .set_range(0.0, 1.0)
             .for_deserialize();
+        KNOWHERE_CONFIG_DECLARE_FIELD(element_bit_width)
+            .description("bit width of vector element.")
+            .set_default(8)
+            .for_train();
+        KNOWHERE_CONFIG_DECLARE_FIELD(refine_k)
+            .description("if refine k is set, jacarrd distance will return.")
+            .allow_empty_without_default()
+            .for_search();
+        KNOWHERE_CONFIG_DECLARE_FIELD(with_raw_data)
+            .description("if has_raw_data = true, index will keep raw data in the index.")
+            .set_default(false)
+            .for_train();
         KNOWHERE_CONFIG_DECLARE_FIELD(hash_data_type)
-            .description("input data type of hash code, uint32, uint16 or uint64.")
             .set_default("uint32")
             .for_train()
             .for_deserialize();

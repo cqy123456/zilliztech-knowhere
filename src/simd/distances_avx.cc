@@ -1139,5 +1139,12 @@ rabitq_dp_popcnt_avx(const uint8_t* q, const uint8_t* x, const size_t d, const s
     return dot;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// minhash
+float
+minhash_lsh_hit_avx2(const char* x, const char* y, size_t dim, size_t band) {
+    
+}
+
 }  // namespace faiss
 #endif

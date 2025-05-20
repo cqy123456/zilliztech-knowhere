@@ -146,9 +146,8 @@ fvec_masked_sum_avx512(const float* q, const uint8_t* x, const size_t d);
 int
 rabitq_dp_popcnt_avx512(const uint8_t* q, const uint8_t* x, const size_t d, const size_t nb);
 
+///////////////////////////////////////////////////////////////////////////////
 // minhash
-float
-fvec_minhash_jaccard_avx512(const float* x, const float* y, size_t d, size_t mh_d);
 int
 binary_search_eq_avx512(const uint64_t*, const size_t n, const uint64_t key);
 int
@@ -156,4 +155,9 @@ binary_search_ge_avx512(const uint64_t*, const size_t n, const uint64_t key);
 
 uint64_t
 calculate_hash_avx512(const uint32_t* data, size_t dim, size_t band, size_t band_i);
+
+float u32_jaccard_distance_avx512(const char* , const char* , size_t size,  size_t);
+void u32_jaccard_distance_batch_4_avx512(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
+float u64_jaccard_distance_avx512(const char* , const char* , size_t size,  size_t);
+void u64_jaccard_distance_batch_4_avx512(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
 }  // namespace faiss

@@ -9,7 +9,6 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-#include <gperftools/profiler.h>
 
 #include <string>
 
@@ -189,7 +188,7 @@ base_search() {
         {
             knowhere::DataSetPtr ds_ptr = nullptr;
             auto minhash_index = knowhere::IndexFactory::Instance()
-                                     .Create<DataType>("MinHashIndex", version, minhash_index_index_pack)
+                                     .Create<DataType>("MinHashLSH", version, minhash_index_index_pack)
                                      .value();
             minhash_index.Build(ds_ptr, json);
             minhash_index.Serialize(binset);
@@ -197,7 +196,7 @@ base_search() {
         {
             // knn search
             auto minhash_index = knowhere::IndexFactory::Instance()
-                                     .Create<DataType>("MinHashIndex", version, minhash_index_index_pack)
+                                     .Create<DataType>("MinHashLSH", version, minhash_index_index_pack)
                                      .value();
             // HeapProfilerStart("memory_profile");
             minhash_index.Deserialize(binset, deserialize_json);

@@ -12,7 +12,7 @@
 #include <cstdint>
 
 #include "diskann/utils.h"
-#include "index/minhash/minhash_index.h"
+#include "index/minhash/minhash_lsh.h"
 #include "index/minhash/minhash_index_config.h"
 #include "knowhere/comp/index_param.h"
 #include "knowhere/comp/thread_pool.h"
@@ -22,16 +22,16 @@
 #include "knowhere/file_manager.h"
 #include "knowhere/index/index_factory.h"
 #include "knowhere/log.h"
-#include "knowhere/minhash_util.h"
+#include "index/minhash/minhash_util.h"
 #include "knowhere/utils.h"
 
 // use diskann to hack
 namespace knowhere {
 template <typename DataType>
-class MinHashIndexNode : public IndexNode {
+class MinHashLSHNode : public IndexNode {
  public:
     using DistType = float;
-    MinHashIndexNode(const int32_t& version, const Object& object) : is_loaded_(false) {
+    MinHashLSHNode(const int32_t& version, const Object& object) : is_loaded_(false) {
         assert(typeid(object) == typeid(Pack<std::shared_ptr<FileManager>>));
         auto disk_index_pack = dynamic_cast<const Pack<std::shared_ptr<FileManager>>*>(&object);
         assert(disk_index_pack != nullptr);
@@ -162,16 +162,16 @@ class MinHashIndexNode : public IndexNode {
 
     std::string index_prefix_;
     std::shared_ptr<FileManager> file_manager_;
-    std::unique_ptr<MinHashIndexBase> minhash_index_;
+    std::unique_ptr<MinHashLSHBase> minhash_index_;
     std::shared_ptr<ThreadPool> search_pool_;
     bool is_loaded_ = false;
     const std::string fname_ = "minhash_index";
 };
 template <typename DataType>
 Status
-MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config> cfg, bool use_knowhere_build_pool) {
+MinHashLSHNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config> cfg, bool use_knowhere_build_pool) {
     auto build_conf = static_cast<const MinHashConfig&>(*cfg);
-    auto index_params = std::make_unique<MinHashIndexBuildParams>();
+    auto index_params = std::make_unique<MinHashLSHBuildParams>();
     index_params->data_path = build_conf.data_path.value();
     if (!LoadFile(build_conf.data_path.value())) {
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
@@ -186,21 +186,21 @@ MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Conf
     if (hash_type == "uint16") {
         size_t data_dim = dim / (8 * sizeof(uint16_t));
         index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashIndex<uint16_t>::BuildAndSave(index_params.get());
+        auto build_stat = MinHashLSH<uint16_t>::BuildAndSave(index_params.get());
         if (build_stat != Status::success) {
             return build_stat;
         }
     } else if (hash_type == "uint32") {
         size_t data_dim = dim / (8 * sizeof(uint32_t));
         index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashIndex<uint32_t>::BuildAndSave(index_params.get());
+        auto build_stat = MinHashLSH<uint32_t>::BuildAndSave(index_params.get());
         if (build_stat != Status::success) {
             return build_stat;
         }
     } else if (hash_type == "uint64") {
         size_t data_dim = dim / (8 * sizeof(uint64_t));
         index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashIndex<uint64_t>::BuildAndSave(index_params.get());
+        auto build_stat = MinHashLSH<uint64_t>::BuildAndSave(index_params.get());
         if (build_stat != Status::success) {
             return build_stat;
         }
@@ -217,9 +217,9 @@ MinHashIndexNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Conf
 
 template <typename DataType>
 Status
-MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr<Config> cfg) {
+MinHashLSHNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr<Config> cfg) {
     auto load_conf = static_cast<const MinHashConfig&>(*cfg);
-    auto index_params = std::make_unique<MinHashIndexLoadParams>();
+    auto index_params = std::make_unique<MinHashLSHLoadParams>();
     index_params->index_file_path = load_conf.index_prefix.value() + fname_;
     index_params->hash_code_in_memory = load_conf.hash_code_in_mem.value();
     index_params->global_bloom_filter = load_conf.shared_bloom_filter.value();
@@ -230,11 +230,11 @@ MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr
     }
     auto hash_type = load_conf.hash_data_type.value();
     if (hash_type == "uint16") {
-        minhash_index_ = std::make_unique<MinHashIndex<uint16_t>>();
+        minhash_index_ = std::make_unique<MinHashLSH<uint16_t>>();
     } else if (hash_type == "uint32") {
-        minhash_index_ = std::make_unique<MinHashIndex<uint32_t>>();
+        minhash_index_ = std::make_unique<MinHashLSH<uint32_t>>();
     } else if (hash_type == "uint64") {
-        minhash_index_ = std::make_unique<MinHashIndex<uint64_t>>();
+        minhash_index_ = std::make_unique<MinHashLSH<uint64_t>>();
     } else {
         LOG_KNOWHERE_ERROR_ << "Failed to generate minhash index." << std::endl;
         return Status::internal_error;
@@ -248,7 +248,7 @@ MinHashIndexNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr
 
 template <typename DataType>
 expected<DataSetPtr>
-MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Config> cfg,
+MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Config> cfg,
                                    const BitsetView& bitset) const {
     if (!is_loaded_ || !minhash_index_) {
         LOG_KNOWHERE_ERROR_ << "Failed to load minhash index.";
@@ -286,5 +286,5 @@ MinHashIndexNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Con
     return res;
 }
 // hack, fp16/bf16 not work
-KNOWHERE_MOCK_REGISTER_DENSE_BINARY_ALL_GLOBAL(MinHashIndex, MinHashIndexNode, knowhere::feature::DISK)
+KNOWHERE_MOCK_REGISTER_DENSE_BINARY_ALL_GLOBAL(MinHashLSH, MinHashLSHNode, knowhere::feature::DISK)
 }  // namespace knowhere

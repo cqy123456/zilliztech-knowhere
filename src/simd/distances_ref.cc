@@ -566,23 +566,43 @@ rabitq_dp_popcnt_ref(const uint8_t* q, const uint8_t* x, const size_t d, const s
     return dot;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// minhash
 float
-fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d, size_t mh_d) {
-    // checking d % mh_d == 0 at first
-    size_t mh_r = d / mh_d;
-    for (size_t i = 0; i < mh_d; i++) {
-        const float* x_i = x + mh_r * i;
-        const float* y_i = y + mh_r * i;
-        size_t j = 0;
-        for (; j < mh_r; j++) {
-            if (x_i[j] != y_i[j])
-                break;
+minhash_lsh_hit_ref(const char* x, const char* y, size_t dim, size_t band) {
+    size_t r = dim / band;
+    for (size_t i = 0; i < band; i++) {
+        const char* x_b = x + r * i;
+        const char* y_b = y + r * i;
+        size_t j = r;
+        bool eq = true;
+        while (j > 0) {
+            if (*(const uint64_t*)(x_b) != *(const uint64_t*)(y_b)) {
+                goto next_band; 
+            }
+            j -= 8;
+            x_b += 8;
+            y_b += 8;
         }
-        if (j == mh_r)
+        // the rest 8 element
+        switch (j) {
+            case 7: eq = eq & (x_b[6]==y_b[6]);
+            case 6: eq = eq & (x_b[5]==y_b[5]);
+            case 5: eq = eq & (x_b[4]==y_b[4]);
+            case 4: eq = eq & (x_b[3]==y_b[3]);
+            case 3: eq = eq & (x_b[2]==y_b[2]);
+            case 2: eq = eq & (x_b[1]==y_b[1]);
+            case 1: eq = eq & (x_b[0]==y_b[0]);
+            case 0: ;
+        }
+        if (eq == true) {
             return 1.0;
+        }
+        next_band:;
     }
     return 0.0;
 }
+
 int
 binary_search_eq_ref(const uint64_t* data, const size_t size, const uint64_t target) {
     int left = 0;
@@ -647,4 +667,61 @@ calculate_hash_ref(const uint32_t* data, size_t dim, size_t band, size_t band_i)
     }
     return h;
 }
+float u32_jaccard_distance_ref(const char* x, const char* y, size_t element_length,  size_t element_size) {
+    float res = 0.0;
+    auto u32_x = (const uint32_t*)x;
+    auto u32_y = (const uint32_t*)y;
+    for (size_t i = 0; i < element_length; i++) {
+        res += (u32_x[i] == u32_y[i]);
+    }
+    return res / element_length;
+}
+void u32_jaccard_distance_batch_4_ref(const char* x, const char* y0, const char* y1,const char* y2,const char* y3,size_t element_length, size_t element_size, float& dis0, float& dis1, float& dis2, float& dis3) {
+    dis0 = dis1 = dis2 = dis3 = 0.0;
+    auto u32_x = (const uint32_t*)x;
+    auto u32_y0 = (const uint32_t*)y0;
+    auto u32_y1 = (const uint32_t*)y1;
+    auto u32_y2 = (const uint32_t*)y2;
+    auto u32_y3 = (const uint32_t*)y3;
+    for (size_t i = 0; i < element_length; i++) {
+        dis0 += (u32_x[i] == u32_y0[i]);
+        dis1 += (u32_x[i] == u32_y1[i]);
+        dis2 += (u32_x[i] == u32_y2[i]);
+        dis3 += (u32_x[i] == u32_y3[i]);
+    }
+    dis0 /= element_length;
+    dis1 /= element_length;
+    dis2 /= element_length;
+    dis3 /= element_length;
+    return ;
+}
+float u64_jaccard_distance_ref(const char* x, const char* y, size_t element_length,  size_t element_size) {
+    float res = 0.0;
+    auto u64_x = (const uint64_t*)x;
+    auto u64_y = (const uint64_t*)y;
+    for (size_t i = 0; i < element_length; i++) {
+        res += (u64_x[i] == u64_y[i]);
+    }
+    return res / element_length;
+}
+void u64_jaccard_distance_batch_4_ref(const char* x, const char* y0, const char* y1,const char* y2,const char* y3,size_t element_length, size_t element_size, float& dis0, float& dis1, float& dis2, float& dis3) {
+    dis0 = dis1 = dis2 = dis3 = 0.0;
+    auto u64_x = (const uint64_t*)x;
+    auto u64_y0 = (const uint64_t*)y0;
+    auto u64_y1 = (const uint64_t*)y1;
+    auto u64_y2 = (const uint64_t*)y2;
+    auto u64_y3 = (const uint64_t*)y3;
+    for (size_t i = 0; i < element_length; i++) {
+        dis0 += (u64_x[i] == u64_y0[i]);
+        dis1 += (u64_x[i] == u64_y1[i]);
+        dis2 += (u64_x[i] == u64_y2[i]);
+        dis3 += (u64_x[i] == u64_y3[i]);
+    }
+    dis0 /= element_length;
+    dis1 /= element_length;
+    dis2 /= element_length;
+    dis3 /= element_length;
+    return ;
+}
+
 }  // namespace faiss

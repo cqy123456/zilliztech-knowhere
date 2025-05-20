@@ -89,6 +89,9 @@ include(cmake/libs/libhnsw.cmake)
 
 include_directories(thirdparty/faiss)
 
+find_package(xxHash CONFIG REQUIRED)
+target_link_libraries(main PRIVATE xxHash::xxHash)
+
 find_package(Boost REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
 

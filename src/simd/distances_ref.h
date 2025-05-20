@@ -181,16 +181,18 @@ rabitq_dp_popcnt_ref(const uint8_t* q, const uint8_t* x, const size_t d, const s
 ///////////////////////////////////////////////////////////////////////////////
 // minhash
 float
-fvec_minhash_jaccard_ref(const float* x, const float* y, size_t d, size_t mh_d);
-
+minhash_lsh_hit_ref(const char* x, const char* y, size_t dim, size_t band);
 int
 binary_search_eq_ref(const uint64_t*, const size_t n, const uint64_t key);
 int
 binary_search_ge_ref(const uint64_t*, const size_t n, const uint64_t key);
 int
 binary_search_lt_ref(const uint64_t*, const size_t n, const uint64_t key);
-
 uint64_t
 calculate_hash_ref(const uint32_t* data, size_t dim, size_t band, size_t band_i);
+float u32_jaccard_distance_ref(const char* , const char* , size_t size,  size_t);
+void u32_jaccard_distance_batch_4_ref(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
+float u64_jaccard_distance_ref(const char* , const char* , size_t size,  size_t);
+void u64_jaccard_distance_batch_4_ref(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
 
 }  // namespace faiss

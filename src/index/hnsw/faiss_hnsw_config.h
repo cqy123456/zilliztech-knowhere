@@ -29,6 +29,7 @@ class FaissHnswConfig : public BaseHnswConfig {
     CFG_FLOAT refine_k;
     // type of refine
     CFG_STRING refine_type;
+    CFG_INT element_bit_width;
 
     KNOHWERE_DECLARE_CONFIG(FaissHnswConfig) {
         KNOWHERE_CONFIG_DECLARE_FIELD(seed_ef)

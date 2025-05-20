@@ -908,41 +908,8 @@ rabitq_dp_popcnt_avx512(const uint8_t* q, const uint8_t* x, const size_t d, cons
     return dot;
 }
 
-float
-fvec_minhash_jaccard_avx512(const float* x, const float* y, size_t d, size_t mh_d) {
-    size_t mh_r = d / mh_d;
-
-    for (size_t i = 0; i < mh_d; ++i) {
-        const float* x_i = x + i * mh_r;
-        const float* y_i = y + i * mh_r;
-        bool all_equal = true;
-        size_t j = 0;
-
-        for (; j + 15 < mh_r; j += 16) {
-            __m512 x_vec = _mm512_loadu_ps(x_i + j);
-            __m512 y_vec = _mm512_loadu_ps(y_i + j);
-            __mmask16 mask = _mm512_cmp_ps_mask(x_vec, y_vec, _CMP_EQ_OQ);
-            if (mask != 0xFFFF) {
-                all_equal = false;
-                break;
-            }
-        }
-
-        if (all_equal) {
-            for (; j < mh_r; ++j) {
-                if (x_i[j] != y_i[j]) {
-                    all_equal = false;
-                    break;
-                }
-            }
-        }
-
-        if (all_equal)
-            return 1.0f;
-    }
-    return 0.0f;
-}
-
+///////////////////////////////////////////////////////////////////////////////
+// minhash
 int
 binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t key) {
     const __m512i vtarget = _mm512_set1_epi64(key);
@@ -1068,6 +1035,138 @@ calculate_hash_avx512(const uint32_t* data, size_t dim, size_t band, size_t band
         h = h * 13331 + band_i_data[i];
     }
     return h;
+}
+float u32_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,  size_t element_size) {
+    const uint32_t* u32_x = reinterpret_cast<const uint32_t*>(x);
+    const uint32_t* u32_y = reinterpret_cast<const uint32_t*>(y);
+     __m512i equal_sum = _mm512_setzero_si512();
+     size_t count = element_length;
+     while(count - 16 > 0) {
+        __m512i vec_x = _mm512_loadu_si512(u32_x);
+        __m512i vec_y = _mm512_loadu_si512(u32_y);
+        __mmask16 cmp_result = _mm512_cmpeq_epu32_mask(vec_x, vec_y);
+        equal_sum = _mm512_add_epi32(equal_sum, 
+                                   _mm512_maskz_set1_epi32(cmp_result, 1));
+        count -= 16;
+        u32_x += 16;
+        u32_y += 16;
+     }
+     uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
+     while(count > 0) {
+        sum += (*u32_x) == (*u32_y);
+        count --;
+        u32_x ++;
+        u32_y ++;
+     }
+    return float(sum) / element_length;
+}
+void u32_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y1,const char* y2,const char* y3,size_t element_length, size_t element_size, float& dis0, float& dis1, float& dis2, float& dis3) {
+    const uint32_t* u32_x = reinterpret_cast<const uint32_t*>(x);
+    const uint32_t* u32_y0 = reinterpret_cast<const uint32_t*>(y0);
+    const uint32_t* u32_y1 = reinterpret_cast<const uint32_t*>(y1);
+    const uint32_t* u32_y2 = reinterpret_cast<const uint32_t*>(y2);
+    const uint32_t* u32_y3 = reinterpret_cast<const uint32_t*>(y3);
+    size_t count = element_length;
+    uint32_t d0, d1, d2, d3;
+    d0 = d1 = d2 = d3 = 0;
+    while(count- 16 > 0) {
+        __m512i vec_x = _mm512_loadu_si512(u32_x);
+        __m512i vec_y0 = _mm512_loadu_si512(u32_y0);
+        __m512i vec_y1 = _mm512_loadu_si512(u32_y1);
+        __m512i vec_y2 = _mm512_loadu_si512(u32_y2);
+        __m512i vec_y3 = _mm512_loadu_si512(u32_y3);
+        __mmask16 cmp_result0 = _mm512_cmpeq_epu32_mask(vec_x, vec_y0);
+        __mmask16 cmp_result1 = _mm512_cmpeq_epu32_mask(vec_x, vec_y1);
+        __mmask16 cmp_result2 = _mm512_cmpeq_epu32_mask(vec_x, vec_y2);
+        __mmask16 cmp_result3 = _mm512_cmpeq_epu32_mask(vec_x, vec_y3);
+        d0 += __builtin_popcount(static_cast<unsigned int>(cmp_result0));
+        d1 += __builtin_popcount(static_cast<unsigned int>(cmp_result1));
+        d2 += __builtin_popcount(static_cast<unsigned int>(cmp_result2));
+        d3 += __builtin_popcount(static_cast<unsigned int>(cmp_result3));
+        count -= 16;
+        u32_x += 16;
+        u32_y0 += 16;u32_y1 += 16;u32_y2 += 16;u32_y3 += 16;
+    }
+    while(count > 0) {
+        d0 += (*u32_x) == (*u32_y0);
+        d0 += (*u32_x) == (*u32_y1);
+        d0 += (*u32_x) == (*u32_y2);
+        d0 += (*u32_x) == (*u32_y3);
+        count --;
+        u32_x ++;
+        u32_y0 ++;u32_y1 ++;u32_y2 ++;u32_y3 ++;
+     }
+     dis0 = float(d0) / element_length;
+     dis1 = float(d1) / element_length;
+     dis2 = float(d2) / element_length;
+     dis3 = float(d3) / element_length;
+}
+
+float u64_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,  size_t element_size) {
+    const uint64_t* u64_x = reinterpret_cast<const uint64_t*>(x);
+    const uint64_t* u64_y = reinterpret_cast<const uint64_t*>(y);
+     __m512i equal_sum = _mm512_setzero_si512();
+     size_t count = element_length;
+     while(count - 8 > 0) {
+        __m512i vec_x = _mm512_loadu_si512(u64_x);
+        __m512i vec_y = _mm512_loadu_si512(u64_y);
+        __mmask8 cmp_result = _mm512_cmpeq_epu64_mask(vec_x, vec_y);
+        equal_sum = _mm512_add_epi32(equal_sum, 
+                                   _mm512_maskz_set1_epi32(cmp_result, 1));
+        
+        count -= 8;
+        u64_x += 8;
+        u64_y += 8;
+     }
+     uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
+     while(count > 0) {
+        sum += (*u64_x) == (*u64_x);
+        count --;
+        u64_x ++;
+        u64_y ++;
+     }
+    return float(sum) / element_length;
+}
+void u64_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y1,const char* y2,const char* y3,size_t element_length, size_t element_size, float& dis0, float& dis1, float& dis2, float& dis3) {
+    const uint32_t* u64_x = reinterpret_cast<const uint32_t*>(x);
+    const uint32_t* u64_y0 = reinterpret_cast<const uint32_t*>(y0);
+    const uint32_t* u64_y1 = reinterpret_cast<const uint32_t*>(y1);
+    const uint32_t* u64_y2 = reinterpret_cast<const uint32_t*>(y2);
+    const uint32_t* u64_y3 = reinterpret_cast<const uint32_t*>(y3);
+    size_t count = element_length;
+    uint32_t d0, d1, d2, d3;
+    d0 = d1 = d2 = d3 = 0;
+    while(count- 16 > 0) {
+        __m512i vec_x = _mm512_loadu_si512(u64_x);
+        __m512i vec_y0 = _mm512_loadu_si512(u64_y0);
+        __m512i vec_y1 = _mm512_loadu_si512(u64_y1);
+        __m512i vec_y2 = _mm512_loadu_si512(u64_y2);
+        __m512i vec_y3 = _mm512_loadu_si512(u64_y3);
+        __mmask8 cmp_result0 = _mm512_cmpeq_epu64_mask(vec_x, vec_y0);
+        __mmask8 cmp_result1 = _mm512_cmpeq_epu64_mask(vec_x, vec_y1);
+        __mmask8 cmp_result2 = _mm512_cmpeq_epu64_mask(vec_x, vec_y2);
+        __mmask8 cmp_result3 = _mm512_cmpeq_epu64_mask(vec_x, vec_y3);
+        d0 += __builtin_popcount(static_cast<unsigned int>(cmp_result0));
+        d1 += __builtin_popcount(static_cast<unsigned int>(cmp_result1));
+        d2 += __builtin_popcount(static_cast<unsigned int>(cmp_result2));
+        d3 += __builtin_popcount(static_cast<unsigned int>(cmp_result3));
+        count -= 8;
+        u64_x += 8;
+        u64_y0 += 8;u64_y1 += 8;u64_y2 += 8;u64_y3 += 8;
+    }
+    while(count > 0) {
+        d0 += (*u64_x) == (*u64_y0);
+        d0 += (*u64_x) == (*u64_y1);
+        d0 += (*u64_x) == (*u64_y2);
+        d0 += (*u64_x) == (*u64_y3);
+        count --;
+        u64_x ++;
+        u64_y0 ++; u64_y1 ++; u64_y2 ++; u64_y3++;
+     }
+     dis0 = float(d0) / element_length;
+     dis1 = float(d1) / element_length;
+     dis2 = float(d2) / element_length;
+     dis3 = float(d3) / element_length;
 }
 }  // namespace faiss
 #endif
