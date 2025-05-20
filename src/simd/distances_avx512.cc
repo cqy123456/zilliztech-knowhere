@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include "xxhash.h"
 #include <string>
 
 #include "faiss/impl/platform_macros.h"
@@ -1004,37 +1005,11 @@ horizontal_sum(__m512i vec) {
 
 uint64_t
 calculate_hash_avx512(const uint32_t* data, size_t dim, size_t band, size_t band_i) {
-    const uint64_t seed = 0xc70f6907UL;
-    const size_t sub_dim = dim / band;
-    const uint32_t* band_i_data = data + sub_dim * band_i;
-    uint64_t h = seed;
-    const size_t block_size = 8;
-    const size_t num_blocks = sub_dim / block_size;
-    const size_t remaining = sub_dim % block_size;
-
-    uint64_t pow_in_block[block_size];
-    pow_in_block[block_size - 1] = 1;
-    for (int i = block_size - 2; i >= 0; --i) {
-        pow_in_block[i] = pow_in_block[i + 1] * 13331;
-    }
-
-    uint64_t pow_block = 1;
-    for (size_t i = 0; i < block_size; ++i) pow_block *= 13331;
-
-    __m512i vpow = _mm512_loadu_si512(pow_in_block);
-
-    for (size_t b = 0; b < num_blocks; ++b) {
-        __m256i vdata_u32 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(band_i_data + b * block_size));
-        __m512i vdata = _mm512_cvtepu32_epi64(vdata_u32);
-        __m512i vcontrib = _mm512_mullo_epi64(vdata, vpow);
-        uint64_t sum = horizontal_sum(vcontrib);
-        h = h * pow_block + sum;
-    }
-
-    for (size_t i = num_blocks * block_size; i < sub_dim; ++i) {
-        h = h * 13331 + band_i_data[i];
-    }
-    return h;
+    const uint64_t seed = 0;
+     const size_t sub_dim = dim / band;
+   const uint32_t* band_i_data = data + sub_dim * band_i;
+    
+    return XXH64(band_i_data, sub_dim, seed);
 }
 float u32_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,  size_t element_size) {
     const uint32_t* u32_x = reinterpret_cast<const uint32_t*>(x);
