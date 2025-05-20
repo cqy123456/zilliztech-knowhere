@@ -243,13 +243,7 @@ load_binary_file(const std::string& bin_file, std::unique_ptr<T[]>& data, size_t
 template <typename IN_HASH_TYPE>
 inline KeyType
 get_hash_key(const IN_HASH_TYPE* data, size_t dim, size_t band, size_t band_i) {
-    if constexpr (std::is_same_v<IN_HASH_TYPE, uint32_t>) {
-        return faiss::calculate_hash((const uint32_t*)data, dim, band, band_i);
-    } else {
-        auto sub_dim = dim / band;
-        auto band_i_data = data + sub_dim * band_i;
-        return hash_binary_vec((const uint8_t*)band_i_data, dim * sizeof(IN_HASH_TYPE));
-    }
+    return faiss::calculate_hash((const uint32_t*)data, dim, band, band_i);
 }
 
 template <typename IN_HASH_TYPE>
