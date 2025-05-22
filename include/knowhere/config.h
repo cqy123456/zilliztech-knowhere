@@ -796,10 +796,11 @@ class BaseConfig : public Config {
         KNOWHERE_CONFIG_DECLARE_FIELD(element_bit_width)
             .description("sizeof(hash code), the hash element should be aligned on 8 bits")
             .set_default(8)
-            .for_train();
+            .for_train()
+            .for_search();
         KNOWHERE_CONFIG_DECLARE_FIELD(search_with_jaccard)
             .description("build mh_jaccard index ")
-            .set_default(true)
+            .set_default(false)
             .for_search();
 
     }

@@ -105,9 +105,8 @@ decltype(fvec_masked_sum) fvec_masked_sum = fvec_masked_sum_ref;
 decltype(rabitq_dp_popcnt) rabitq_dp_popcnt = rabitq_dp_popcnt_ref;
 
 // minhash
-decltype(binary_search_eq) binary_search_eq = binary_search_eq_ref;
-decltype(binary_search_ge) binary_search_ge = binary_search_ge_ref;
-decltype(binary_search_lt) binary_search_lt = binary_search_lt_ref;
+decltype(u64_binary_search_eq) u64_binary_search_eq = u64_binary_search_eq_ref;
+decltype(u64_binary_search_ge) u64_binary_search_ge = u64_binary_search_ge_ref;
 decltype(calculate_hash) calculate_hash = calculate_hash_ref;
 decltype(u32_jaccard_distance) u32_jaccard_distance = u32_jaccard_distance_ref;
 decltype(u32_jaccard_distance_batch_4) u32_jaccard_distance_batch_4 = u32_jaccard_distance_batch_4_ref;
@@ -286,8 +285,8 @@ fvec_hook(std::string& simd_type) {
             rabitq_dp_popcnt = rabitq_dp_popcnt_avx512;
         }
         // minhash
-        binary_search_eq = binary_search_eq_avx512;
-        binary_search_ge = binary_search_ge_avx512;
+        u64_binary_search_eq = u64_binary_search_eq_avx512;
+        u64_binary_search_ge = u64_binary_search_ge_avx512;
         calculate_hash = calculate_hash_avx512;
         u32_jaccard_distance = u32_jaccard_distance_avx512;
         u32_jaccard_distance_batch_4 = u32_jaccard_distance_batch_4_avx512;

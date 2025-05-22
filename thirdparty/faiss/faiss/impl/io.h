@@ -99,9 +99,9 @@ struct BlockFileIOWriter : FileIOWriter {
     size_t current_block_id = 0;
     size_t block_buf_ofs = 0; 
 
-    BlockFileIOWriter(FILE* wf, size_t block_size = 8 * 1024);
+    BlockFileIOWriter(FILE* wf, size_t block_size = 8 * 1024, size_t header_size = 8 * 1024);
 
-    BlockFileIOWriter(const char* fname, size_t block_size = 8 * 1024);
+    BlockFileIOWriter(const char* fname, size_t block_size = 8 * 1024, size_t header_size = 8 * 1024);
 
     ~BlockFileIOWriter() override;
 

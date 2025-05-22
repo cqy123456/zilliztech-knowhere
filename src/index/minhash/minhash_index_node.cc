@@ -24,6 +24,7 @@
 #include "knowhere/log.h"
 #include "index/minhash/minhash_util.h"
 #include "knowhere/utils.h"
+#include "knowhere/bitsetview_idselector.h"
 
 // use diskann to hack
 namespace knowhere {
@@ -162,54 +163,43 @@ class MinHashLSHNode : public IndexNode {
 
     std::string index_prefix_;
     std::shared_ptr<FileManager> file_manager_;
-    std::unique_ptr<MinHashLSHBase> minhash_index_;
+    std::unique_ptr<MinHashLSH> minhash_index_;
     std::shared_ptr<ThreadPool> search_pool_;
     bool is_loaded_ = false;
-    const std::string fname_ = "minhash_index";
+    const std::string fname_ = "minhash_lsh_index";
 };
 template <typename DataType>
 Status
 MinHashLSHNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config> cfg, bool use_knowhere_build_pool) {
     auto build_conf = static_cast<const MinHashConfig&>(*cfg);
-    auto index_params = std::make_unique<MinHashLSHBuildParams>();
-    index_params->data_path = build_conf.data_path.value();
     if (!LoadFile(build_conf.data_path.value())) {
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
         return Status::disk_file_error;
     }
-    index_params->index_file_path = build_conf.index_prefix.value() + fname_;
-    index_params->block_size = build_conf.aligned_block_size.value();
-    index_params->has_raw_data = build_conf.with_raw_data.value();
-    auto hash_type = build_conf.hash_data_type.value();
     size_t dim, rows;
     diskann::get_bin_metadata(build_conf.data_path.value(), rows, dim);
-    if (hash_type == "uint16") {
-        size_t data_dim = dim / (8 * sizeof(uint16_t));
-        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashLSH<uint16_t>::BuildAndSave(index_params.get());
-        if (build_stat != Status::success) {
-            return build_stat;
-        }
-    } else if (hash_type == "uint32") {
-        size_t data_dim = dim / (8 * sizeof(uint32_t));
-        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashLSH<uint32_t>::BuildAndSave(index_params.get());
-        if (build_stat != Status::success) {
-            return build_stat;
-        }
-    } else if (hash_type == "uint64") {
-        size_t data_dim = dim / (8 * sizeof(uint64_t));
-        index_params->band = build_conf.band.has_value() ? build_conf.band.value() : data_dim;
-        auto build_stat = MinHashLSH<uint64_t>::BuildAndSave(index_params.get());
-        if (build_stat != Status::success) {
-            return build_stat;
-        }
-    } else {
-        LOG_KNOWHERE_ERROR_ << "Failed to generate minhash index." << std::endl;
-        return Status::internal_error;
+    if (dim % 8 != 0 || build_conf.element_bit_width.value() % 8 != 0) {
+        LOG_KNOWHERE_ERROR_ << "dim % 8 and element_bit_width % 8 should be equal to zero." << std::endl;
+        return Status::invalid_args;
     }
-    if (!AddFile(index_params->index_file_path)) {
-        LOG_KNOWHERE_ERROR_ << "Failed to add file " << index_params->index_file_path << ".";
+    auto mh_vec_element_size = build_conf.element_bit_width.value() / 8;
+    auto mh_vec_length = dim / build_conf.element_bit_width.value();
+    MinHashLSHBuildParams index_params = {
+        .data_path = build_conf.data_path.value(),
+        .index_file_path = build_conf.index_prefix.value() + fname_,
+        .band = build_conf.band.value(), 
+        .block_size = build_conf.aligned_block_size.value(),
+        .with_raw_data = build_conf.with_raw_data.value(),
+        .mh_vec_element_size = mh_vec_element_size,
+        .mh_vec_length = mh_vec_length
+    };
+
+    auto build_stat = MinHashLSH::BuildAndSave(&index_params);
+    if (build_stat != Status::success) {
+        return build_stat;
+    }
+    if (!AddFile(index_params.index_file_path)) {
+        LOG_KNOWHERE_ERROR_ << "Failed to add file " << index_params.index_file_path << ".";
         return Status::disk_file_error;
     }
     return Status::success;
@@ -219,27 +209,17 @@ template <typename DataType>
 Status
 MinHashLSHNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr<Config> cfg) {
     auto load_conf = static_cast<const MinHashConfig&>(*cfg);
-    auto index_params = std::make_unique<MinHashLSHLoadParams>();
-    index_params->index_file_path = load_conf.index_prefix.value() + fname_;
-    index_params->hash_code_in_memory = load_conf.hash_code_in_mem.value();
-    index_params->global_bloom_filter = load_conf.shared_bloom_filter.value();
-    index_params->false_positive_prob = load_conf.bloom_false_positive_prob.value();
-    if (!LoadFile(index_params->index_file_path)) {
+    auto index_params_ptr = std::make_unique<MinHashLSHLoadParams>();
+    index_params_ptr->index_file_path = load_conf.index_prefix.value() + fname_;
+    index_params_ptr->hash_code_in_memory = load_conf.hash_code_in_mem.value();
+    index_params_ptr->global_bloom_filter = load_conf.shared_bloom_filter.value();
+    index_params_ptr->false_positive_prob = load_conf.bloom_false_positive_prob.value();
+    if (!LoadFile(index_params_ptr->index_file_path)) {
         LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
         return Status::disk_file_error;
     }
-    auto hash_type = load_conf.hash_data_type.value();
-    if (hash_type == "uint16") {
-        minhash_index_ = std::make_unique<MinHashLSH<uint16_t>>();
-    } else if (hash_type == "uint32") {
-        minhash_index_ = std::make_unique<MinHashLSH<uint32_t>>();
-    } else if (hash_type == "uint64") {
-        minhash_index_ = std::make_unique<MinHashLSH<uint64_t>>();
-    } else {
-        LOG_KNOWHERE_ERROR_ << "Failed to generate minhash index." << std::endl;
-        return Status::internal_error;
-    }
-    auto stat = minhash_index_->Load(index_params.get());
+    minhash_index_ = std::make_unique<MinHashLSH>();
+    auto stat = minhash_index_->Load(index_params_ptr.get());
     if (stat == Status::success) {
         is_loaded_ = true;
     }
@@ -259,13 +239,20 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
     if (stat != Status::success) {
         return expected<DataSetPtr>::Err(Status::invalid_args, "MinhashConfigCheck fail.");
     }
+    auto topk = search_conf.k.value();
     auto nq = dataset->GetRows();
     auto dim = dataset->GetDim() / 8;
     auto xq = static_cast<const char*>(dataset->GetTensor());
-    auto p_id = std::make_unique<int64_t[]>(nq);
-    auto p_dist = std::make_unique<DistType[]>(nq);
-    if (nq >= 10000000) {
-        minhash_index_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_);
+    auto p_id = std::make_unique<int64_t[]>(nq * topk);
+    auto p_dist = std::make_unique<DistType[]>(nq * topk);
+    MinHashLSHSearchParams search_params;
+    search_params.k = topk;
+    search_params.search_with_jaccard = search_conf.search_with_jaccard.value();
+    search_params.refine_k = search_conf.refine_k.value_or(topk);
+    BitsetViewIDSelector bw_idselector(bitset);
+    search_params.id_selector = (bitset.empty()) ? nullptr : &bw_idselector;
+    if (search_conf.batch_search.value() == true) {
+        minhash_index_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_, &search_params);
     } else {
         std::vector<folly::Future<folly::Unit>> futures;
         auto batch_size = 64;
@@ -275,16 +262,16 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
             futures.emplace_back(
                 search_pool_->push([&, beg = row * batch_size, end = std::min((row + 1) * batch_size, nq),
                                     p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
-                    for (auto index = beg; index < end; index++) {
-                        minhash_index_->Search(xq + (index * dim), p_dist_ptr + index, p_id_ptr + index);
+                    for (size_t index = beg; index < end; index++) {
+                        minhash_index_->Search(xq + (index * dim), p_dist_ptr + index * topk, p_id_ptr + index * topk, &search_params);
                     }
                 }));
         }
         WaitAllSuccess(futures);
     }
-    auto res = GenResultDataSet(nq, 1, std::move(p_id), std::move(p_dist));
+    auto res = GenResultDataSet(nq, topk, std::move(p_id), std::move(p_dist));
     return res;
 }
-// hack, fp16/bf16 not work
-KNOWHERE_MOCK_REGISTER_DENSE_BINARY_ALL_GLOBAL(MinHashLSH, MinHashLSHNode, knowhere::feature::DISK)
+
+KNOWHERE_MOCK_REGISTER_DENSE_BINARY_ALL_GLOBAL(MinHash_LSH, MinHashLSHNode, knowhere::feature::DISK)
 }  // namespace knowhere

@@ -21,6 +21,7 @@
 #include <string>
 
 #include "faiss/impl/platform_macros.h"
+#include <iostream>
 
 namespace faiss {
 
@@ -912,7 +913,7 @@ rabitq_dp_popcnt_avx512(const uint8_t* q, const uint8_t* x, const size_t d, cons
 ///////////////////////////////////////////////////////////////////////////////
 // minhash
 int
-binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t key) {
+u64_binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t key) {
     const __m512i vtarget = _mm512_set1_epi64(key);
     intptr_t low = 0;
     intptr_t high = static_cast<intptr_t>(size) - 1;
@@ -921,20 +922,17 @@ binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t k
     while (low <= high) {
         intptr_t mid = low + (high - low) / 2;
         mid = mid & ~0x7;
-
         if (mid + 7 >= size) {
             mid = size - 8;
         }
-
         __m512i vdata = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(&arr[mid]));
-
-        __mmask8 eq_mask = _mm512_cmpeq_epi64_mask(vdata, vtarget);
-        __mmask8 gt_mask = _mm512_cmpgt_epi64_mask(vdata, vtarget);
-
+        __mmask8 eq_mask = _mm512_cmpeq_epu64_mask(vdata, vtarget);
+        __mmask8 gt_mask = _mm512_cmpgt_epu64_mask(vdata, vtarget);
         if (eq_mask != 0) {
             const int offset = __builtin_ctz(eq_mask);
             found_idx = mid + offset;
             high = found_idx - 1;
+            break;
         }
         if (gt_mask != 0) {
             high = mid - 1;
@@ -955,7 +953,7 @@ binary_search_eq_avx512(const uint64_t* arr, const size_t size, const uint64_t k
     return -1;
 }
 int
-binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t target) {
+u64_binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t target) {
     constexpr int SIMD_WIDTH = 8;
     const __m512i v_target = _mm512_set1_epi64(target);
     int left = 0;
@@ -967,7 +965,7 @@ binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t 
         mid = mid & ~(SIMD_WIDTH - 1);
 
         __m512i v_data = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(&data[mid]));
-        __mmask8 ge_mask = _mm512_cmpge_epi64_mask(v_data, v_target);
+        __mmask8 ge_mask = _mm512_cmpge_epu64_mask(v_data, v_target);
 
         if (ge_mask != 0) {
             uint8_t mask = static_cast<uint8_t>(ge_mask);
@@ -978,6 +976,7 @@ binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint64_t 
             }
             result = mid + offset;
             right = mid - 1;
+            break;
         } else {
             left = mid + SIMD_WIDTH;
         }
@@ -1004,18 +1003,15 @@ horizontal_sum(__m512i vec) {
 }
 
 uint64_t
-calculate_hash_avx512(const uint32_t* data, size_t dim, size_t band, size_t band_i) {
-    const uint64_t seed = 0;
-     const size_t sub_dim = dim / band;
-   const uint32_t* band_i_data = data + sub_dim * band_i;
-    
-    return XXH64(band_i_data, sub_dim, seed);
+calculate_hash_avx512(const char* data, size_t size) {
+    return XXH3_64bits(data, size);
 }
+
 float u32_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,  size_t element_size) {
     const uint32_t* u32_x = reinterpret_cast<const uint32_t*>(x);
     const uint32_t* u32_y = reinterpret_cast<const uint32_t*>(y);
      __m512i equal_sum = _mm512_setzero_si512();
-     size_t count = element_length;
+     int64_t count = element_length;
      while(count - 16 > 0) {
         __m512i vec_x = _mm512_loadu_si512(u32_x);
         __m512i vec_y = _mm512_loadu_si512(u32_y);
@@ -1041,7 +1037,7 @@ void u32_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const ch
     const uint32_t* u32_y1 = reinterpret_cast<const uint32_t*>(y1);
     const uint32_t* u32_y2 = reinterpret_cast<const uint32_t*>(y2);
     const uint32_t* u32_y3 = reinterpret_cast<const uint32_t*>(y3);
-    size_t count = element_length;
+    int64_t count = element_length;
     uint32_t d0, d1, d2, d3;
     d0 = d1 = d2 = d3 = 0;
     while(count- 16 > 0) {
@@ -1064,9 +1060,9 @@ void u32_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const ch
     }
     while(count > 0) {
         d0 += (*u32_x) == (*u32_y0);
-        d0 += (*u32_x) == (*u32_y1);
-        d0 += (*u32_x) == (*u32_y2);
-        d0 += (*u32_x) == (*u32_y3);
+        d1 += (*u32_x) == (*u32_y1);
+        d2 += (*u32_x) == (*u32_y2);
+        d3 += (*u32_x) == (*u32_y3);
         count --;
         u32_x ++;
         u32_y0 ++;u32_y1 ++;u32_y2 ++;u32_y3 ++;
@@ -1081,7 +1077,7 @@ float u64_jaccard_distance_avx512(const char* x, const char* y, size_t element_l
     const uint64_t* u64_x = reinterpret_cast<const uint64_t*>(x);
     const uint64_t* u64_y = reinterpret_cast<const uint64_t*>(y);
      __m512i equal_sum = _mm512_setzero_si512();
-     size_t count = element_length;
+     int64_t count = element_length;
      while(count - 8 > 0) {
         __m512i vec_x = _mm512_loadu_si512(u64_x);
         __m512i vec_y = _mm512_loadu_si512(u64_y);
@@ -1095,7 +1091,7 @@ float u64_jaccard_distance_avx512(const char* x, const char* y, size_t element_l
      }
      uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
      while(count > 0) {
-        sum += (*u64_x) == (*u64_x);
+        sum += (*u64_x) == (*u64_y);
         count --;
         u64_x ++;
         u64_y ++;
@@ -1103,13 +1099,13 @@ float u64_jaccard_distance_avx512(const char* x, const char* y, size_t element_l
     return float(sum) / element_length;
 }
 void u64_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y1,const char* y2,const char* y3,size_t element_length, size_t element_size, float& dis0, float& dis1, float& dis2, float& dis3) {
-    const uint32_t* u64_x = reinterpret_cast<const uint32_t*>(x);
-    const uint32_t* u64_y0 = reinterpret_cast<const uint32_t*>(y0);
-    const uint32_t* u64_y1 = reinterpret_cast<const uint32_t*>(y1);
-    const uint32_t* u64_y2 = reinterpret_cast<const uint32_t*>(y2);
-    const uint32_t* u64_y3 = reinterpret_cast<const uint32_t*>(y3);
-    size_t count = element_length;
-    uint32_t d0, d1, d2, d3;
+    const uint64_t* u64_x = reinterpret_cast<const uint64_t*>(x);
+    const uint64_t* u64_y0 = reinterpret_cast<const uint64_t*>(y0);
+    const uint64_t* u64_y1 = reinterpret_cast<const uint64_t*>(y1);
+    const uint64_t* u64_y2 = reinterpret_cast<const uint64_t*>(y2);
+    const uint64_t* u64_y3 = reinterpret_cast<const uint64_t*>(y3);
+    int64_t count = element_length;
+    uint64_t d0, d1, d2, d3;
     d0 = d1 = d2 = d3 = 0;
     while(count- 16 > 0) {
         __m512i vec_x = _mm512_loadu_si512(u64_x);
@@ -1131,9 +1127,9 @@ void u64_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const ch
     }
     while(count > 0) {
         d0 += (*u64_x) == (*u64_y0);
-        d0 += (*u64_x) == (*u64_y1);
-        d0 += (*u64_x) == (*u64_y2);
-        d0 += (*u64_x) == (*u64_y3);
+        d1 += (*u64_x) == (*u64_y1);
+        d2 += (*u64_x) == (*u64_y2);
+        d3 += (*u64_x) == (*u64_y3);
         count --;
         u64_x ++;
         u64_y0 ++; u64_y1 ++; u64_y2 ++; u64_y3++;

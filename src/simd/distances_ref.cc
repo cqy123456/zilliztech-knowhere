@@ -14,6 +14,7 @@
 #include <cmath>
 
 #include "knowhere/operands.h"
+#include "xxhash.h"
 
 namespace faiss {
 
@@ -604,7 +605,7 @@ minhash_lsh_hit_ref(const char* x, const char* y, size_t dim, size_t band) {
 }
 
 int
-binary_search_eq_ref(const uint64_t* data, const size_t size, const uint64_t target) {
+u64_binary_search_eq_ref(const uint64_t* data, const size_t size, const uint64_t target) {
     int left = 0;
     int right = static_cast<int>(size) - 1;
     int result = -1;
@@ -623,7 +624,7 @@ binary_search_eq_ref(const uint64_t* data, const size_t size, const uint64_t tar
     return result;
 }
 int
-binary_search_ge_ref(const uint64_t* data, const size_t size, const uint64_t target) {
+u64_binary_search_ge_ref(const uint64_t* data, const size_t size, const uint64_t target) {
     int left = 0;
     int right = static_cast<int>(size) - 1;
     int result = -1;
@@ -639,34 +640,12 @@ binary_search_ge_ref(const uint64_t* data, const size_t size, const uint64_t tar
     }
     return result;
 }
-int
-binary_search_lt_ref(const uint64_t* data, const size_t size, const uint64_t target) {
-    int left = 0;
-    int right = static_cast<int>(size) - 1;
-    int result = -1;
-
-    while (left <= right) {
-        int mid = left + (right - left) / 2;
-        if (data[mid] < target) {
-            result = mid;
-            left = mid + 1;
-        } else {
-            right = mid - 1;
-        }
-    }
-    return result;
-}
 
 uint64_t
-calculate_hash_ref(const uint32_t* data, size_t dim, size_t band, size_t band_i) {
-    uint64_t h = 0xc70f6907UL;
-    auto sub_dim = dim / band;
-    auto band_i_data = data + sub_dim * band_i;
-    for (size_t i = 0; i < sub_dim; ++i) {
-        h = h * 13331 + band_i_data[i];
-    }
-    return h;
+calculate_hash_ref(const char* data, size_t size) {
+    return XXH3_64bits(data, size);
 }
+
 float u32_jaccard_distance_ref(const char* x, const char* y, size_t element_length,  size_t element_size) {
     float res = 0.0;
     auto u32_x = (const uint32_t*)x;

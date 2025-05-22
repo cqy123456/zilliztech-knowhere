@@ -123,14 +123,13 @@ extern float (*fvec_masked_sum)(const float*, const uint8_t*, const size_t);
 extern int (*rabitq_dp_popcnt)(const uint8_t*, const uint8_t*, const size_t, const size_t);
 
 // minhash
-extern int (*binary_search_eq)(const uint64_t*, const size_t, const uint64_t);
-extern int (*binary_search_ge)(const uint64_t*, const size_t, const uint64_t);
-extern int (*binary_search_lt)(const uint64_t*, const size_t, const uint64_t);
+extern int (*u64_binary_search_eq)(const uint64_t*, const size_t, const uint64_t);
+extern int (*u64_binary_search_ge)(const uint64_t*, const size_t, const uint64_t);
 extern float (*u32_jaccard_distance)(const char* , const char* , size_t size,  size_t);
 extern void (*u32_jaccard_distance_batch_4)(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
 extern float (*u64_jaccard_distance)(const char* , const char* , size_t size,  size_t);
 extern void (*u64_jaccard_distance_batch_4)(const char*, const char*, const char*,const char*,const char*,size_t, size_t, float&, float&, float&, float&);
-extern uint64_t (*calculate_hash)(const uint32_t*, size_t, size_t, size_t);
+extern uint64_t (*calculate_hash)(const char*, size_t);
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(__x86_64__)
 bool

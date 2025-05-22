@@ -14,6 +14,7 @@
 #include <faiss/impl/FaissAssert.h>
 #include <faiss/impl/io.h>
 #include <iostream>
+#include "knowhere/utils.h"
 
 namespace faiss {
 
@@ -129,21 +130,22 @@ int FileIOWriter::filedescriptor() {
 #endif
 }
 
-BlockFileIOWriter::BlockFileIOWriter(FILE* wf, size_t block_size): FileIOWriter(wf), block_size(block_size) {
-    block_buf = std::make_unique<char[]>(block_size);
+BlockFileIOWriter::BlockFileIOWriter(FILE* wf, size_t block_size, size_t header_size): FileIOWriter(wf), block_size(block_size) {
+    header_size = (header_size + block_size) / block_size;
+    block_buf = std::make_unique<char[]>(header_size);
     block_buf_ofs = 0;
     // write a placeholder for file header
-    fwrite(block_buf.get(), sizeof(char), block_size, f);
+    fwrite(block_buf.get(), sizeof(char), header_size, f);
     current_block_id = 1;
 
 }
 
-BlockFileIOWriter::BlockFileIOWriter(const char* fname, size_t block_size):FileIOWriter(fname), block_size(block_size)  {
-    block_buf = std::make_unique<char[]>(block_size);
+BlockFileIOWriter::BlockFileIOWriter(const char* fname, size_t block_size, size_t header_size):FileIOWriter(fname), block_size(block_size)  {
+    header_size = ROUND_UP(header_size,block_size);
+    block_buf = std::make_unique<char[]>(header_size);
     block_buf_ofs = 0;
     // write a placeholder for file header
-    std::cout <<"block size:"<<block_size<<std::endl;
-    fwrite(block_buf.get(), sizeof(char), block_size, f);
+    fwrite(block_buf.get(), sizeof(char), header_size, f);
     current_block_id = 1;
 }
 

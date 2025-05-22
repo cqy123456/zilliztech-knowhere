@@ -228,12 +228,13 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                     if (search_with_jaccard) {
                         size_t hash_element_size = cfg.element_bit_width.value() / 8; //in bytes
                         size_t hash_element_length = dim / (hash_element_size * 8);
-                        auto cur_query = (const char*)xq + (hash_element_size * hash_element_length) * index;
+                        std::cout <<"hash_element_size, hash_element_length"<<hash_element_size<<" "<<hash_element_length<<std::endl;
+                        auto cur_query = (const char*)xq + (dim / 8) * index;
                         minhash_jaccard_knn_ny(cur_query, (const char*)xb, hash_element_length, hash_element_size, nb, topk, bitset, cur_distances,
                                 cur_labels);
                     } else {
                         size_t u8_dim = dim / 8;
-                        auto cur_query = (const char*)xq + (u8_dim / 8) * index;
+                        auto cur_query = (const char*)xq + u8_dim  * index;
                         minhash_lsh_hit_ny(cur_query, (const char*)xb, u8_dim, band, nb, topk, bitset, cur_distances,
                                 cur_labels);
                         }
@@ -403,12 +404,12 @@ BruteForce::SearchWithBuf(const DataSetPtr base_dataset, const DataSetPtr query_
                     if (search_with_jaccard) {
                         size_t hash_element_size = cfg.element_bit_width.value() / 8; //in bytes
                         size_t hash_element_length = dim / (hash_element_size * 8);
-                        auto cur_query = (const char*)xq + (hash_element_size * hash_element_length) * index;
+                        auto cur_query = (const char*)xq + (dim / 8) * index;
                         minhash_jaccard_knn_ny(cur_query, (const char*)xb, hash_element_length, hash_element_size, nb, topk, bitset, cur_distances,
                                 cur_labels);
                     } else {
                         size_t u8_dim = dim / 8;
-                        auto cur_query = (const char*)xq + (u8_dim / 8) * index;
+                        auto cur_query = (const char*)xq + u8_dim  * index;
                         minhash_lsh_hit_ny(cur_query, (const char*)xb, u8_dim, band, nb, topk, bitset, cur_distances,
                                 cur_labels);
                         }
