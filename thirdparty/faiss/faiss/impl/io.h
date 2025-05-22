@@ -148,7 +148,7 @@ struct BufferedIOReader : IOReader {
 
 struct BufferedIOWriter : IOWriter {
     IOWriter* writer;
-    size_t bsz; // buffer
+    size_t bsz;
     size_t ofs;
     size_t ofs2; ///< number of bytes received from caller
     size_t b0;   ///< amount of data in buffer
@@ -157,6 +157,7 @@ struct BufferedIOWriter : IOWriter {
     explicit BufferedIOWriter(IOWriter* writer, size_t bsz = 1024 * 1024);
 
     size_t operator()(const void* ptr, size_t size, size_t nitems) override;
+    
     // flushes
     ~BufferedIOWriter() override;
 };

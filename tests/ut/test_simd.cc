@@ -66,7 +66,6 @@ TEST_CASE("Test minhash function") {
         auto u32_x = GenRandomVector<uint32_t>(dim, 4, seed);
         auto u32_y = GenRandomVector<uint32_t>(dim, 1, seed + 222);
         float res_dis[4], gt_ids[4];
-        std::cout <<"dim"<<dim<<std::endl;
         CHECK_EQ(faiss::u64_jaccard_distance((const char*)u64_x.get(), (const char*)u64_x.get(), dim, 8), 1.0);
         CHECK_EQ(faiss::u64_jaccard_distance((const char*)u64_x.get(), (const char*)u64_y.get(), dim, 8), faiss::u64_jaccard_distance_ref((const char*)u64_x.get(), (const char*)u64_y.get(), dim, 8));
         CHECK_EQ(faiss::u32_jaccard_distance((const char*)u32_x.get(), (const char*)u32_x.get(), dim, 4), 1.0);

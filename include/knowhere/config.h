@@ -637,7 +637,6 @@ class BaseConfig : public Config {
      * band is a special parameters of BF search and MinHash index node train.
      */
     CFG_INT band;
-    CFG_STRING hash_;
     CFG_BOOL search_with_jaccard;
     CFG_INT element_bit_width;
     KNOHWERE_DECLARE_CONFIG(BaseConfig) {
@@ -799,7 +798,7 @@ class BaseConfig : public Config {
             .for_train()
             .for_search();
         KNOWHERE_CONFIG_DECLARE_FIELD(search_with_jaccard)
-            .description("build mh_jaccard index ")
+            .description("return the jaccard distance of minhash vector search or minhashlsh hit flag.")
             .set_default(false)
             .for_search();
 

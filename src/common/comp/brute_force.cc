@@ -228,7 +228,6 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
                     if (search_with_jaccard) {
                         size_t hash_element_size = cfg.element_bit_width.value() / 8; //in bytes
                         size_t hash_element_length = dim / (hash_element_size * 8);
-                        std::cout <<"hash_element_size, hash_element_length"<<hash_element_size<<" "<<hash_element_length<<std::endl;
                         auto cur_query = (const char*)xq + (dim / 8) * index;
                         minhash_jaccard_knn_ny(cur_query, (const char*)xb, hash_element_length, hash_element_size, nb, topk, bitset, cur_distances,
                                 cur_labels);

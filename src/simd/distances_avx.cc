@@ -19,6 +19,8 @@
 
 #include "faiss/impl/platform_macros.h"
 
+#include "xxhash.h"
+
 namespace faiss {
 
 #define ALIGNED(x) __attribute__((aligned(x)))
@@ -1138,5 +1140,11 @@ rabitq_dp_popcnt_avx(const uint8_t* q, const uint8_t* x, const size_t d, const s
 
     return dot;
 }
+
+uint64_t
+calculate_hash_avx2(const char* data, size_t size) {
+    return XXH3_64bits(data, size);
+}
+
 }  // namespace faiss
 #endif

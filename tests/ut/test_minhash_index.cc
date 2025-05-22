@@ -52,11 +52,12 @@ TEST_CASE("Test MinHashLSHIndexNode with MinHashLSH hit", "[minhash_lsh_index]")
 
     auto metric_str =  knowhere::metric::MHJACCARD;
     auto version = GenTestVersionList();
-    auto hash_bit = GENERATE(as<uint32_t>{}, 16, 64, 128);
+    auto hash_bit = GENERATE(as<uint32_t>{},  32, 64, 128);
     auto use_mmap = GENERATE(as<bool>{}, true, false);
     auto batch_search_flag = GENERATE(as<bool>{}, true, false);
+    auto search_with_jaccard = GENERATE(as<bool>{}, true, false);
     size_t bin_vec_dim = kHashDim * hash_bit;
-    auto base_gen = [&metric_str, &hash_bit, dim = bin_vec_dim]() {
+    auto base_gen = [&metric_str, &hash_bit, &search_with_jaccard, &dim = bin_vec_dim]() {
         knowhere::Json json;
         json["dim"] = dim;
         json["metric_type"] = metric_str;
@@ -64,6 +65,7 @@ TEST_CASE("Test MinHashLSHIndexNode with MinHashLSH hit", "[minhash_lsh_index]")
         json["refine_k"] = int(kK * 4);
         json["band"] = 32;
         json["element_bit_width"] = hash_bit;
+        json["search_with_jaccard"] = search_with_jaccard;
         return json;
     };
 
@@ -130,15 +132,17 @@ TEST_CASE("Test MinHashLSHIndexNode with MinHashLSH hit", "[minhash_lsh_index]")
             knowhere::Json knn_json = knowhere::Json::parse(knn_search_json);
             auto res = minhash_index.Search(query_ds, knn_json, nullptr);
             REQUIRE(res.has_value());
-            float lsh_recall = 0;
-            auto res_dis = res.value()->GetDistance();
             float recall = GetKNNRecall(*lsh_gt_ptr, *res.value());
             REQUIRE(recall == 1.0);
-            for (size_t i =0; i < query_ds->GetRows(); i++){
-                lsh_recall+= (res_dis[i*kK] == 1.0);
+            if (!search_with_jaccard) {
+                float lsh_recall = 0;
+                auto res_dis = res.value()->GetDistance();
+                for (size_t i =0; i < query_ds->GetRows(); i++){
+                    lsh_recall+= (res_dis[i*kK] == 1.0);
+                }
+                lsh_recall /= query_ds->GetRows();
+                REQUIRE(lsh_recall == 1.0);
             }
-            lsh_recall /= query_ds->GetRows();
-            REQUIRE(lsh_recall == 1.0);
         }
     }
     fs::remove_all(kDir);

@@ -148,7 +148,6 @@ class MinHashLSH {
     size_t ntotal_;
 };
 
-// todo: thread pool version
 namespace {
 constexpr int kBatch = 4096;
 constexpr int kQueryBatch = 64;
@@ -175,7 +174,7 @@ gen_transposed_hash_kv(const char* data, size_t rows, size_t data_size, size_t b
             for (size_t j = beg_id; j < end_id; j++) {
                 const char* data_j = data + data_size * j;
                 for (size_t b = 0; b < band; b++) {
-                    KVPair kv = {get_hash_key(data_j, data_size, band, b), j};
+                    KVPair kv = {get_hash_key(data_j, data_size, band, b), ValueType(j)};
                     res_kv.get()[b * rows + j] = kv;
                 }
             }

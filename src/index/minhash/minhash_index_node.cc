@@ -32,7 +32,7 @@ template <typename DataType>
 class MinHashLSHNode : public IndexNode {
  public:
     using DistType = float;
-    MinHashLSHNode(const int32_t& version, const Object& object) : is_loaded_(false) {
+    MinHashLSHNode(const int32_t& version, const Object& object) {
         assert(typeid(object) == typeid(Pack<std::shared_ptr<FileManager>>));
         auto disk_index_pack = dynamic_cast<const Pack<std::shared_ptr<FileManager>>*>(&object);
         assert(disk_index_pack != nullptr);
@@ -187,10 +187,10 @@ MinHashLSHNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config
     MinHashLSHBuildParams index_params = {
         .data_path = build_conf.data_path.value(),
         .index_file_path = build_conf.index_prefix.value() + fname_,
-        .band = build_conf.band.value(), 
-        .block_size = build_conf.aligned_block_size.value(),
+        .band = static_cast<size_t>(build_conf.band.value()), 
+        .block_size = static_cast<size_t>(build_conf.aligned_block_size.value()),
         .with_raw_data = build_conf.with_raw_data.value(),
-        .mh_vec_element_size = mh_vec_element_size,
+        .mh_vec_element_size = static_cast<size_t>(mh_vec_element_size),
         .mh_vec_length = mh_vec_length
     };
 

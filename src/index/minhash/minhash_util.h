@@ -26,9 +26,7 @@ minhash_jaccard_native(const char* x, const char* y, size_t element_length,  siz
     for (size_t i = 0; i < element_length; i++) {
         const char* x_b = x + element_size * i;
         const char* y_b = y + element_size * i;
-        if(std::memcmp(x_b, y_b, element_size) == 0) {
-            res += (x[i] == y[i]);
-        }
+        res += (std::memcmp(x_b, y_b, element_size) == 0);
     }
     return res / float(element_length);
 }
@@ -43,9 +41,9 @@ minhash_jaccard_batch_4_native(const char* x, const char* y0, const char* y1,con
         const char* y2_b = y2 + element_size * i;
         const char* y3_b = y3 + element_size * i;
         dis0 += (std::memcmp(x_b, y0_b, element_size) == 0);
-        dis0 += (std::memcmp(x_b, y1_b, element_size) == 0);
-        dis0 += (std::memcmp(x_b, y2_b, element_size) == 0);
-        dis0 += (std::memcmp(x_b, y3_b, element_size) == 0);
+        dis1 += (std::memcmp(x_b, y1_b, element_size) == 0);
+        dis2 += (std::memcmp(x_b, y2_b, element_size) == 0);
+        dis3 += (std::memcmp(x_b, y3_b, element_size) == 0);
     }
     dis0 /= size;
     dis1 /= size;
@@ -105,6 +103,7 @@ struct MinHashJaccardComputer : faiss::DistanceComputer {
     DIST1FUNC dist1;
     DIST4FUNC dist4;
     size_t element_size; // in bytes
+    size_t vec_size;
     MinHashJaccardComputer(const char* x, const size_t l, const size_t es):base(x), element_length(l), element_size(es){
         if (element_size == 4) {
             dist1 = faiss::u32_jaccard_distance;
@@ -116,6 +115,7 @@ struct MinHashJaccardComputer : faiss::DistanceComputer {
             dist1 = &minhash_jaccard_native;
             dist4 = &minhash_jaccard_batch_4_native;
         }
+        vec_size = element_size* element_length; 
     }
     void set_query(const float* x) override {
         q = reinterpret_cast<const char*>(x);
@@ -125,20 +125,20 @@ struct MinHashJaccardComputer : faiss::DistanceComputer {
         return dist1(q, (const char*)x, element_length, element_size);
     }
     float operator()(idx_t i) override {
-        return distance_to_code(base + i * element_length * element_size);
+        return distance_to_code(base + i * vec_size);
     }
     void
     distances_batch_4(const idx_t idx0, const idx_t idx1, const idx_t idx2, const idx_t idx3, float& dis0, float& dis1,
                       float& dis2, float& dis3) override {
-        const char* xb_0 = base + idx0 * element_length * element_size;
-        const char* xb_1 = base + idx1 * element_length;
-        const char* xb_2 = base + idx2 * element_length;
-        const char* xb_3 = base + idx3 * element_length;
+        const char* xb_0 = base + idx0 * vec_size;
+        const char* xb_1 = base + idx1 * vec_size;
+        const char* xb_2 = base + idx2 * vec_size;
+        const char* xb_3 = base + idx3 * vec_size;
         dist4(q, xb_0, xb_1, xb_2, xb_3, element_length, element_size, dis0, dis1, dis2, dis3);
     }
     float
     symmetric_dis(idx_t i, idx_t j) override {
-        return dist1(base + i * element_length, base + j * element_length, element_length, element_size);
+        return dist1(base + i * vec_size, base + j * vec_size, element_length, element_size);
     }
 };
 
@@ -161,7 +161,6 @@ minhash_jaccard_knn_ny(const char* x, const char* y, size_t length, size_t eleme
         vals[i] = 0.0;
         ids[i] = -1;
     }
-    std::cout <<"nminhash_jaccard_knn_ny "<<element_size<<std::endl;
     auto computer = std::shared_ptr<MinHashJaccardComputer>(new MinHashJaccardComputer(y, length, element_size));
     computer->set_query((const float*)x);
     auto filter =
