@@ -25,13 +25,12 @@ struct MinHashLSHResultHandler {
     idx_t* ids_list_;
     float* dis_list_;
     size_t topk_;
-    size_t counter_;
+    size_t counter_ = 0;
     MinHashLSHResultHandler(idx_t* res_ids, float* res_dis, size_t topk)
         : ids_list_(res_ids), dis_list_(res_dis), topk_(topk) {
-        counter_ = 0;
         for (size_t i = 0; i < topk_; i++) {
             ids_list_[i] = -1;
-            dis_list_[i] = 0.0;
+            dis_list_[i] = 0.0f;
         }
     }
     bool

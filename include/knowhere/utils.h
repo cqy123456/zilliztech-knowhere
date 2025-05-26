@@ -238,10 +238,12 @@ load_binary_vec(const std::string& bin_file, std::unique_ptr<char[]>& data, size
     file.read(reinterpret_cast<char*>(&d), sizeof(uint32_t));
     npts = n;
     dim = d;
+    if (dim % 8 != 0) {
+        throw std::runtime_error("fail to load binary vector base file, dim % 8 != 0 ");
+    }
     uint64_t total_size = dim * npts / 8;
     data = std::make_unique<char[]>(total_size);
     file.read(reinterpret_cast<char*>(data.get()), total_size);
-    return;
 }
 
 // taken from

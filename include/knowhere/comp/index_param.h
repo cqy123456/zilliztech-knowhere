@@ -56,7 +56,7 @@ constexpr const char* INDEX_HNSW_PQ = "HNSW_PQ";
 constexpr const char* INDEX_HNSW_PRQ = "HNSW_PRQ";
 
 constexpr const char* INDEX_DISKANN = "DISKANN";
-constexpr const char* INDEX_MINHASH_INDEX = "MinHash_LSH";
+constexpr const char* INDEX_MINHASH_INDEX = "MINHASH_LSH";
 
 constexpr const char* INDEX_SPARSE_INVERTED_INDEX = "SPARSE_INVERTED_INDEX";
 constexpr const char* INDEX_SPARSE_WAND = "SPARSE_WAND";

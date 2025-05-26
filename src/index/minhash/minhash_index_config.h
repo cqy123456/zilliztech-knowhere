@@ -46,7 +46,8 @@ class MinHashConfig : public BaseConfig {
             .for_deserialize();
         KNOWHERE_CONFIG_DECLARE_FIELD(refine_k)
             .description("only useful in search_with_jaccard, the search topk of minhash lsh.")
-            .allow_empty_without_default()
+            .set_default(1)
+            .set_range(1, std::numeric_limits<CFG_FLOAT::value_type>::max())
             .for_search();
         KNOWHERE_CONFIG_DECLARE_FIELD(with_raw_data)
             .description("if with_raw_data = true, index will keep raw data in the index.")

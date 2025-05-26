@@ -173,13 +173,13 @@ Status
 MinHashLSHNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config> cfg, bool use_knowhere_build_pool) {
     auto build_conf = static_cast<const MinHashConfig&>(*cfg);
     if (!LoadFile(build_conf.data_path.value())) {
-        LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
+        LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building.";
         return Status::disk_file_error;
     }
     size_t dim, rows;
     diskann::get_bin_metadata(build_conf.data_path.value(), rows, dim);
     if (dim % 8 != 0 || build_conf.mh_element_bit_width.value() % 8 != 0) {
-        LOG_KNOWHERE_ERROR_ << "dim % 8 and mh_element_bit_width % 8 should be equal to zero." << std::endl;
+        LOG_KNOWHERE_ERROR_ << "Expecting (dim % 8 == 0) and (mh_element_bit_width % 8 == 0)";
         return Status::invalid_args;
     }
     size_t mh_vec_element_size = size_t(build_conf.mh_element_bit_width.value() / 8);
@@ -187,7 +187,7 @@ MinHashLSHNode<DataType>::Build(const DataSetPtr dataset, std::shared_ptr<Config
     MinHashLSHBuildParams index_params = {.data_path = build_conf.data_path.value(),
                                           .index_file_path = build_conf.index_prefix.value() + fname_,
                                           .band = size_t(build_conf.band.value()),
-                                          .block_size = build_conf.aligned_block_size.value(),
+                                          .block_size = size_t(build_conf.aligned_block_size.value()),
                                           .with_raw_data = build_conf.with_raw_data.value(),
                                           .mh_vec_element_size = mh_vec_element_size,
                                           .mh_vec_length = mh_vec_length};
@@ -213,7 +213,7 @@ MinHashLSHNode<DataType>::Deserialize(const BinarySet& binset, std::shared_ptr<C
     index_params_ptr->global_bloom_filter = load_conf.shared_bloom_filter.value();
     index_params_ptr->false_positive_prob = load_conf.bloom_false_positive_prob.value();
     if (!LoadFile(index_params_ptr->index_file_path)) {
-        LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building." << std::endl;
+        LOG_KNOWHERE_ERROR_ << "Failed load the raw data before building.";
         return Status::disk_file_error;
     }
     minhash_index_ = std::make_unique<MinHashLSH>();
@@ -235,7 +235,7 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
     auto search_conf = static_cast<const MinHashConfig&>(*cfg);
     auto stat = MinhashConfigCheck(dataset->GetDim(), DataFormatEnum::bin1, PARAM_TYPE::SEARCH, &search_conf, &bitset);
     if (stat != Status::success) {
-        return expected<DataSetPtr>::Err(Status::invalid_args, "MinhashConfigCheck fail.");
+        return expected<DataSetPtr>::Err(Status::invalid_args, "MinhashConfigCheck() failed, please check the config.");
     }
     auto topk = search_conf.k.value();
     auto nq = dataset->GetRows();
@@ -253,12 +253,12 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
         minhash_index_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_, &search_params);
     } else {
         std::vector<folly::Future<folly::Unit>> futures;
-        auto batch_size = 64;
+        constexpr size_t batch_size = 64;
         auto run_time = (nq + batch_size - 1) / batch_size;
         futures.reserve(nq);
         for (int64_t row = 0; row < run_time; ++row) {
             futures.emplace_back(
-                search_pool_->push([&, beg = row * batch_size, end = std::min((row + 1) * batch_size, nq),
+                search_pool_->push([&, beg = row * batch_size, end = std::min(int64_t((row + 1) * batch_size), nq),
                                     p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
                     for (size_t index = beg; index < end; index++) {
                         minhash_index_->Search(xq + (index * dim), p_dist_ptr + index * topk, p_id_ptr + index * topk,

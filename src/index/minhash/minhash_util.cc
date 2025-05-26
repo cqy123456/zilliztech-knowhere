@@ -21,9 +21,9 @@ minhash_jaccard_native(const char* x, const char* y, size_t element_length, size
     for (size_t i = 0; i < element_length; i++) {
         const char* x_b = x + element_size * i;
         const char* y_b = y + element_size * i;
-        res += (std::memcmp(x_b, y_b, element_size) == 0);
+        res += (std::memcmp(x_b, y_b, element_size) == 0) ? 1 : 0;
     }
-    return res / float(element_length);
+    return float(res) / float(element_length);
 }
 
 inline void
@@ -55,21 +55,21 @@ minhash_lsh_hit(const char* x, const char* y, size_t size, size_t band) {
         const char* x_b = x + r * i;
         const char* y_b = y + r * i;
         if (std::memcmp(x_b, y_b, r) == 0) {
-            return 1.0;
+            return 1.0f;
         }
     }
-    return 0.0;
+    return 0.0f;
 }
 
 // use minhash jaccard distance
 struct MinHashJaccardComputer : faiss::DistanceComputer {
     const char* base;
     const char* q;
-    size_t element_length;
+    size_t element_length;  // minhash vector dim
     DIST1FUNC dist1;
     DIST4FUNC dist4;
-    size_t element_size;  // in bytes
-    size_t vec_size;
+    size_t element_size;  // minhash vector element size(in bytes)
+    size_t vec_size;      // total minhash vector size
     MinHashJaccardComputer(const char* x, const size_t l, const size_t es)
         : base(x), element_length(l), element_size(es) {
         if (element_size == 4) {
@@ -124,7 +124,6 @@ minhash_lsh_hit_ny(const char* x, const char* y, size_t dim, size_t band, size_t
             }
         }
     }
-    return;
 }
 
 void
@@ -132,7 +131,7 @@ minhash_jaccard_knn_ny(const char* x, const char* y, size_t length, size_t eleme
                        const BitsetView& bitset, float* vals, int64_t* ids) {
     // init
     for (size_t i = 0; i < topk; i++) {
-        vals[i] = 0.0;
+        vals[i] = 0.0f;
         ids[i] = -1;
     }
     auto computer = std::make_shared<MinHashJaccardComputer>(y, length, element_size);
@@ -146,7 +145,6 @@ minhash_jaccard_knn_ny(const char* x, const char* y, size_t length, size_t eleme
         }
     };
     faiss::distance_compute_if(ny, computer.get(), filter, apply);
-    return;
 }
 
 void
@@ -178,15 +176,18 @@ minhash_jaccard_knn_ny_by_ids(const char* x, const char* y, const int64_t* sel_i
         apply(dis, sel_ids[i]);
         i++;
     }
-    return;
 }
 
 Status
 MinhashConfigCheck(const size_t dim, const DataFormatEnum data_type, const uint32_t fun_type, const BaseConfig* cfg,
                    const BitsetView* bitset) {
+    if (dim % 8 != 0) {
+        LOG_KNOWHERE_ERROR_ << "binary vector dim should be divisible by 8.";
+        return Status::invalid_metric_type;
+    }
     if (data_type != DataFormatEnum::bin1) {
         LOG_KNOWHERE_ERROR_ << "Metric MH_JACCARD only support fp32.";
-        return Status::not_implemented;
+        return Status::invalid_metric_type;
     }
     uint32_t invalid_type = ~(PARAM_TYPE::TRAIN | PARAM_TYPE::SEARCH);
     if ((fun_type & invalid_type) != 0) {

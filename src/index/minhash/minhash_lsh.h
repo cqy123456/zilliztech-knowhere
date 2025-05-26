@@ -9,8 +9,8 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied. See the License for the specific language governing permissions and limitations under the License.
 
-#ifndef MINHASH_TREE_H
-#define MINHASH_TREE_H
+#ifndef MINHASH_LSH_H
+#define MINHASH_LSH_H
 #include "diskann/utils.h"
 #include "faiss/impl/io.h"
 #include "index/minhash/minhash_util.h"
@@ -407,7 +407,7 @@ MinHashLSH::Load(MinHashLSHLoadParams* params) {
         this->file_size_ = s.st_size;
         this->mmap_data_ = static_cast<char*>(mmap(NULL, file_size_, PROT_READ, MAP_SHARED, fileno(f.get()), 0));
         if (mmap_data_ == MAP_FAILED) {
-            LOG_KNOWHERE_ERROR_ << "fail to mmap data ." << errno << " " << strerror(errno) << std::endl;
+            LOG_KNOWHERE_ERROR_ << "fail to mmap data ." << errno << " " << strerror(errno);
             return Status::disk_file_error;
         }
 
@@ -480,7 +480,6 @@ MinHashLSH::Search(const char* query, float* distances, idx_t* labels, MinHashLS
 Status
 MinHashLSH::BatchSearch(const char* query, size_t nq, float* distances, idx_t* labels, std::shared_ptr<ThreadPool> pool,
                         MinHashLSHSearchParams* params) {
-    std::cout << "use batch search" << std::endl;
     if (params == nullptr) {
         LOG_KNOWHERE_ERROR_ << "search parameters is null.";
         return Status::invalid_args;

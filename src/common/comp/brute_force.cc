@@ -157,7 +157,7 @@ BruteForce::Search(const DataSetPtr base_dataset, const DataSetPtr query_dataset
         auto mh_valid_stat =
             MinhashConfigCheck(dim, datatype_v<DataType>, PARAM_TYPE::SEARCH | PARAM_TYPE::TRAIN, &cfg, &bitset);
         if (mh_valid_stat != Status::success) {
-            return expected<DataSetPtr>::Err(mh_valid_stat, "some check for minhash fail.");
+            return expected<DataSetPtr>::Err(mh_valid_stat, "MinhashConfigCheck() failed, please check the config.");
         }
     }
     auto pool = ThreadPool::GetGlobalSearchThreadPool();
@@ -816,7 +816,7 @@ BruteForce::AnnIterator(const DataSetPtr base_dataset, const DataSetPtr query_da
     // some check for minhash metric
     if (metric_str == metric::MHJACCARD) {
         return expected<std::vector<IndexNode::IteratorPtr>>::Err(Status::not_implemented,
-                                                                  "minhash not support iterator.");
+                                                                  "minhash does not support iterator.");
     }
 
 #if defined(NOT_COMPILE_FOR_SWIG) && !defined(KNOWHERE_WITH_LIGHT)

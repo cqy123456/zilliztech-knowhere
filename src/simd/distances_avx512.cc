@@ -970,12 +970,7 @@ u64_binary_search_ge_avx512(const uint64_t* data, const size_t size, const uint6
         __mmask8 ge_mask = _mm512_cmpge_epu64_mask(v_data, v_target);
 
         if (ge_mask != 0) {
-            uint8_t mask = static_cast<uint8_t>(ge_mask);
-            int offset = 0;
-            while ((mask & 0x1) == 0) {
-                mask >>= 1;
-                offset++;
-            }
+            const int offset = __builtin_ctz(ge_mask);
             result = mid + offset;
             right = mid - 1;
             break;
@@ -1016,14 +1011,15 @@ u32_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,
         u32_x += 16;
         u32_y += 16;
     }
-    uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
-    while (count > 0) {
-        sum += (*u32_x) == (*u32_y);
-        count--;
-        u32_x++;
-        u32_y++;
+    if (count > 0) {
+        const __mmask16 mask = (1U << count) - 1U;
+        auto mx = _mm512_maskz_loadu_epi32(mask, u32_x);
+        auto my = _mm512_maskz_loadu_epi32(mask, u32_y);
+        __mmask16 cmp_result = _mm512_cmpeq_epu32_mask(mx, my);
+        equal_sum = _mm512_add_epi32(equal_sum, _mm512_maskz_set1_epi32(cmp_result, 1));
     }
-    return float(sum) / element_length;
+    uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
+    return float(sum) / float(element_length);
 }
 void
 u32_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y1, const char* y2, const char* y3,
@@ -1058,22 +1054,26 @@ u32_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y
         u32_y2 += 16;
         u32_y3 += 16;
     }
-    while (count > 0) {
-        d0 += (*u32_x) == (*u32_y0);
-        d1 += (*u32_x) == (*u32_y1);
-        d2 += (*u32_x) == (*u32_y2);
-        d3 += (*u32_x) == (*u32_y3);
-        count--;
-        u32_x++;
-        u32_y0++;
-        u32_y1++;
-        u32_y2++;
-        u32_y3++;
+    if (count > 0) {
+        const __mmask16 mask = (1U << count) - 1U;
+        auto mx = _mm512_maskz_loadu_epi32(mask, u32_x);
+        auto my0 = _mm512_maskz_loadu_epi32(mask, u32_y0);
+        auto my1 = _mm512_maskz_loadu_epi32(mask, u32_y1);
+        auto my2 = _mm512_maskz_loadu_epi32(mask, u32_y2);
+        auto my3 = _mm512_maskz_loadu_epi32(mask, u32_y3);
+        __mmask16 cmp_result0 = _mm512_cmpeq_epu32_mask(mx, my0);
+        __mmask16 cmp_result1 = _mm512_cmpeq_epu32_mask(mx, my1);
+        __mmask16 cmp_result2 = _mm512_cmpeq_epu32_mask(mx, my2);
+        __mmask16 cmp_result3 = _mm512_cmpeq_epu32_mask(mx, my3);
+        d0 += __builtin_popcount(static_cast<unsigned int>(cmp_result0));
+        d1 += __builtin_popcount(static_cast<unsigned int>(cmp_result1));
+        d2 += __builtin_popcount(static_cast<unsigned int>(cmp_result2));
+        d3 += __builtin_popcount(static_cast<unsigned int>(cmp_result3));
     }
-    dis0 = float(d0) / element_length;
-    dis1 = float(d1) / element_length;
-    dis2 = float(d2) / element_length;
-    dis3 = float(d3) / element_length;
+    dis0 = float(d0) / float(element_length);
+    dis1 = float(d1) / float(element_length);
+    dis2 = float(d2) / float(element_length);
+    dis3 = float(d3) / float(element_length);
 }
 
 float
@@ -1092,13 +1092,14 @@ u64_jaccard_distance_avx512(const char* x, const char* y, size_t element_length,
         u64_x += 8;
         u64_y += 8;
     }
-    uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
-    while (count > 0) {
-        sum += (*u64_x) == (*u64_y);
-        count--;
-        u64_x++;
-        u64_y++;
+    if (count > 0) {
+        const __mmask16 mask = (1U << count) - 1U;
+        auto mx = _mm512_maskz_loadu_epi64(mask, u64_x);
+        auto my = _mm512_maskz_loadu_epi64(mask, u64_y);
+        __mmask16 cmp_result = _mm512_cmpeq_epu64_mask(mx, my);
+        equal_sum = _mm512_add_epi32(equal_sum, _mm512_maskz_set1_epi32(cmp_result, 1));
     }
+    uint32_t sum = _mm512_reduce_add_epi32(equal_sum);
     return float(sum) / element_length;
 }
 void
@@ -1134,17 +1135,21 @@ u64_jaccard_distance_batch_4_avx512(const char* x, const char* y0, const char* y
         u64_y2 += 8;
         u64_y3 += 8;
     }
-    while (count > 0) {
-        d0 += (*u64_x) == (*u64_y0);
-        d1 += (*u64_x) == (*u64_y1);
-        d2 += (*u64_x) == (*u64_y2);
-        d3 += (*u64_x) == (*u64_y3);
-        count--;
-        u64_x++;
-        u64_y0++;
-        u64_y1++;
-        u64_y2++;
-        u64_y3++;
+    if (count > 0) {
+        const __mmask16 mask = (1U << count) - 1U;
+        auto mx = _mm512_maskz_loadu_epi32(mask, u64_x);
+        auto my0 = _mm512_maskz_loadu_epi32(mask, u64_y0);
+        auto my1 = _mm512_maskz_loadu_epi32(mask, u64_y1);
+        auto my2 = _mm512_maskz_loadu_epi32(mask, u64_y2);
+        auto my3 = _mm512_maskz_loadu_epi32(mask, u64_y3);
+        __mmask8 cmp_result0 = _mm512_cmpeq_epu64_mask(mx, my0);
+        __mmask8 cmp_result1 = _mm512_cmpeq_epu64_mask(mx, my1);
+        __mmask8 cmp_result2 = _mm512_cmpeq_epu64_mask(mx, my2);
+        __mmask8 cmp_result3 = _mm512_cmpeq_epu64_mask(mx, my3);
+        d0 += __builtin_popcount(static_cast<unsigned int>(cmp_result0));
+        d1 += __builtin_popcount(static_cast<unsigned int>(cmp_result1));
+        d2 += __builtin_popcount(static_cast<unsigned int>(cmp_result2));
+        d3 += __builtin_popcount(static_cast<unsigned int>(cmp_result3));
     }
     dis0 = float(d0) / element_length;
     dis1 = float(d1) / element_length;

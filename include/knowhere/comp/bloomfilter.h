@@ -53,30 +53,35 @@ class BloomFilter {
     }
 
     void
-    save(const MemoryIOWriter& writer) const {
+    save(MemoryIOWriter& writer) const {
         writeBinaryPOD(writer, m);
         writeBinaryPOD(writer, k);
         writeBinaryPOD(writer, n);
         writeBinaryPOD(writer, p);
-
-        for (bool bit : bits) {
-            char byte = bit ? 1 : 0;
-            writeBinaryPOD(writer, byte);
+        auto bytes_num = (m + 8 - 1) / 8;
+        std::vector<char> buffer(bytes_num, 0);
+        for (size_t i = 0; i < m; ++i) {
+            if (bits[i]) {
+                buffer[i / 8] |= (1 << (i % 8));
+            }
         }
+        writer.write(buffer.data(), buffer.size());
     }
 
     void
-    load(const MemoryIOReader& reader) {
+    load(MemoryIOReader& reader) {
         readBinaryPOD(reader, m);
         readBinaryPOD(reader, k);
         readBinaryPOD(reader, n);
         readBinaryPOD(reader, p);
         bits.clear();
         bits.resize(m);
+        auto bytes_num = (m + 8 - 1) / 8;
+        std::vector<char> buffer(bytes_num);
+        reader.read(buffer.data(), bytes_num);
         for (size_t i = 0; i < m; ++i) {
-            char byte;
-            readBinaryPOD(reader, byte);
-            bits[i] = (byte != 0);
+            bool bit = (buffer[i / 8] >> (i % 8)) & 1;
+            bits.push_back(bit);
         }
     }
     size_t
@@ -95,14 +100,16 @@ class BloomFilter {
  private:
     static constexpr size_t multiplier = 31;
     std::vector<bool> bits;
-    size_t m;
-    int k;
-    double p;
-    size_t n;
+    size_t m = 0;
+    int k = 0;
+    double p = 0;
+    size_t n = 0;
 
-    // todo: handle nullptr
     size_t
     hash(const char* data, size_t length, size_t bucket_i) const {
+        if (data == nullptr) {
+            throw std::runtime_error("can't hash null data.");
+        }
         size_t result = 0;
         for (size_t i = 0; i < length; ++i) {
             result = (result * multiplier) + static_cast<size_t>(data[i]);
