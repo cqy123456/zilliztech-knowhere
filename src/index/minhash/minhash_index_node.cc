@@ -297,15 +297,15 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
     auto xq = static_cast<const char*>(dataset->GetTensor());
     auto p_id = std::make_unique<int64_t[]>(nq * topk);
     auto p_dist = std::make_unique<DistType[]>(nq * topk);
-    minhash::MinHashLSHSearchParams search_params;
-    search_params.k = topk;
-    search_params.search_with_jaccard = search_conf.mh_search_with_jaccard.value();
-    search_params.refine_k = search_conf.refine_k.value_or(topk);
-    BitsetViewIDSelector bw_idselector(bitset);
-    search_params.id_selector = (bitset.empty()) ? nullptr : &bw_idselector;
+    std::shared_ptr<minhash::MinHashLSHSearchParams> search_params = std::make_shared<minhash::MinHashLSHSearchParams>();
+    search_params->k = topk;
+    search_params->search_with_jaccard = search_conf.mh_search_with_jaccard.value();
+    search_params->refine_k = search_conf.refine_k.value_or(topk);
+    std::shared_ptr<BitsetViewIDSelector> bw_idselector = std::make_shared<BitsetViewIDSelector>(bitset);
+    search_params->id_selector = (bitset.empty()) ? nullptr : bw_idselector.get();
     try {
         if (search_conf.mh_lsh_batch_search.value() == true) {
-            minhash_lsh_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_, &search_params);
+            minhash_lsh_->BatchSearch(xq, nq, p_dist.get(), p_id.get(), search_pool_, search_params.get());
         } else {
             std::vector<folly::Future<folly::Unit>> futures;
             constexpr size_t batch_size = 64;
@@ -314,14 +314,15 @@ MinHashLSHNode<DataType>::Search(const DataSetPtr dataset, std::unique_ptr<Confi
             for (size_t row = 0; row < run_times; ++row) {
                 futures.emplace_back(
                     search_pool_->push([&, beg = row * batch_size, end = std::min(int64_t((row + 1) * batch_size), nq),
-                                        p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get()]() {
+                                        p_id_ptr = p_id.get(), p_dist_ptr = p_dist.get(), params = search_params]() {
                         for (size_t index = beg; index < (size_t)end; index++) {
                             minhash_lsh_->Search(xq + (index * dim), p_dist_ptr + index * topk, p_id_ptr + index * topk,
-                                                 &search_params);
+                                                 params.get());
                         }
                     }));
             }
             WaitAllSuccess(futures);
+            futures.clear();
         }
     } catch (const std::exception& e) {
         LOG_KNOWHERE_WARNING_ << "minhash lsh inner error: " << e.what();
